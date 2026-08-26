@@ -88,7 +88,7 @@ export async function convertLocalToUsd(
   const rateFieldName = CURRENCY_TO_RATE_FIELD[currency];
 
   // Retrieve the local-to-ACBU rate (how many units of local currency per 1 ACBU)
-  const localToAcbuRate = latestRate[rateFieldName as keyof typeof latestRate];
+  const localToAcbuRate = latestRate[rateFieldName];
 
   if (!localToAcbuRate || localToAcbuRate.toNumber() <= 0) {
     throw new AppError(
@@ -159,7 +159,7 @@ export async function convertLocalToUsdWithPrecision(
   const rateFieldName = CURRENCY_TO_RATE_FIELD[currency];
 
   // Retrieve the local-to-ACBU rate
-  const localToAcbuRate = latestRate[rateFieldName as keyof typeof latestRate];
+  const localToAcbuRate = latestRate[rateFieldName];
 
   if (!localToAcbuRate || localToAcbuRate.toNumber() <= 0) {
     throw new AppError(

@@ -32,6 +32,11 @@ export async function startSavingsVaultEventListener(): Promise<void> {
 
   const handler = async (event: ContractEvent): Promise<void> => {
     try {
+      // listenToContractEvents (below) already filters to SAVINGS_VAULT_EFFECT_TYPES
+      // before invoking this handler, so this should be unreachable — narrow
+      // explicitly anyway rather than casting past the compiler.
+      if (!isSavingsVaultEffectType(event.type)) {
+        logger.warn("Savings vault event with unexpected type reached handler", {
       const rawData = (event.data || {}) as Record<string, unknown>;
       const { txHash, valid } = extractAndValidateTxHash(rawData);
 
@@ -51,7 +56,7 @@ export async function startSavingsVaultEventListener(): Promise<void> {
         type: event.type,
         data: sanitizedData,
         ledger: event.ledger,
-        timestamp: event.timestamp || new Date().toISOString(),
+        timestamp: new Date(event.timestamp || Date.now()).toISOString(),
       };
 
       await savingsVaultEventProducer.publish(validatedEvent);
@@ -69,7 +74,11 @@ export async function startSavingsVaultEventListener(): Promise<void> {
     }
   };
 
-  eventListener.listenToContractEvents(contractId, SAVINGS_VAULT_EFFECT_TYPES, handler);
+  eventListener.listenToContractEvents(
+    contractId,
+    [...SAVINGS_VAULT_EFFECT_TYPES],
+    handler,
+  );
   logger.info("Savings vault event listener registered with validation", {
     contractId,
     effectTypes: SAVINGS_VAULT_EFFECT_TYPES,

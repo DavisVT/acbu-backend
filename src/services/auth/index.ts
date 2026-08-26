@@ -11,6 +11,8 @@ export {
   signup,
   verify2fa,
   resolveUserByIdentifier,
+  refreshAccessToken,
+  revokeRefreshToken,
   type IssueRefreshTokenParams,
   type IssueRefreshTokenResult,
   type RefreshAccessTokenParams,

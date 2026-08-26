@@ -133,18 +133,18 @@ Created At: ${new Date().toISOString()}
 `;
 
     // 4. Send notification to admins (configurable via env)
-    if (config.ADMIN_NOTIFICATION_EMAIL) {
+    const adminNotificationEmail = config.notification.alertEmail;
+    if (adminNotificationEmail) {
       try {
-        await sendEmail({
-          to: config.ADMIN_NOTIFICATION_EMAIL,
-          subject: `[ACBU] Weekly Weight Drift Audit - ${audit.currenciesExceedingThreshold > 0 ? "ACTION REQUIRED" : "OK"}`,
-          body: emailBody,
-          html: `<pre>${emailBody}</pre>`,
-        });
+        await sendEmail(
+          adminNotificationEmail,
+          `[ACBU] Weekly Weight Drift Audit - ${audit.currenciesExceedingThreshold > 0 ? "ACTION REQUIRED" : "OK"}`,
+          emailBody,
+        );
 
         logger.info("Weight drift audit email sent", {
           auditId: audit.auditId,
-          recipientCount: config.ADMIN_NOTIFICATION_EMAIL.split(",").length,
+          recipientCount: adminNotificationEmail.split(",").length,
         });
       } catch (e) {
         logger.warn("Failed to send weight drift audit email", {

@@ -34,6 +34,7 @@ export class StellarClient {
   private network: "testnet" | "mainnet";
   private networkPassphrase: string;
   private keypair: Keypair | null = null;
+  /** Public key of the configured treasury account, when a secret key is provided. */
   private treasuryAccountId?: string;
   readonly horizonBreaker = new CircuitBreaker({
     failureThreshold: 3,

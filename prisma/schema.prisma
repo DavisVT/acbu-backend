@@ -26,7 +26,7 @@ model Organization {
   salaryBatches   SalaryBatch[]
   salarySchedules SalarySchedule[]
   bulkTransferJobs BulkTransferJob[]
-  transactions    Transaction[]    @relation("OrganizationTransactions")
+  transactions     Transaction[]     @relation("OrganizationTransactions")
 
   @@index([kycStatus], name: "idx_organization_kyc_status")
   @@map("organizations")
@@ -48,6 +48,8 @@ model User {
   phoneVerifiedAt        DateTime?        @map("phone_verified_at") @db.Timestamp(6)
   privacyHideFromSearch  Boolean          @default(true) @map("privacy_hide_from_search")
   passcodeHash           String?          @map("passcode_hash") @db.VarChar(255)
+  failedSigninAttempts   Int              @default(0) @map("failed_signin_attempts")
+  lockoutUntil           DateTime?        @map("lockout_until") @db.Timestamp(6)
   encryptedStellarSecret String?          @map("encrypted_stellar_secret") @db.VarChar(512)
   keyEncryptionHint      String?          @map("key_encryption_hint") @db.VarChar(50)
   walletVersion          Int              @default(0) @map("wallet_version")
@@ -101,6 +103,7 @@ model Transaction {
   fee              Decimal?         @db.Decimal(20, 8)
   rateSnapshot     Json?            @map("rate_snapshot")
   blockchainTxHash String?          @map("blockchain_tx_hash") @db.VarChar(255)
+  fintechProvider  String?          @map("fintech_provider") @db.VarChar(100)
   confirmations    Int              @default(0)
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamp(6)
   completedAt      DateTime?        @map("completed_at") @db.Timestamp(6)
@@ -172,6 +175,7 @@ model OracleRate {
   medianRate          Decimal  @map("median_rate") @db.Decimal(20, 8)
   twap24h             Decimal? @map("twap_24h") @db.Decimal(20, 8)
   validatorSignatures Json?    @map("validator_signatures")
+  rawValues           Json?    @map("raw_values")
   timestamp           DateTime @default(now()) @db.Timestamp(6)
 
   @@unique([currency, timestamp], map: "oracle_rates_currency_timestamp_key")
@@ -435,9 +439,9 @@ model UserDevice {
   isTrusted            Boolean  @default(false) @map("is_trusted")
   verificationAttempts Int      @default(0) @map("verification_attempts")
   trustedAt            DateTime? @map("trusted_at") @db.Timestamp(6)
-  lastSeenAt           DateTime @default(now()) @map("last_seen_at") @db.Timestamp(6)
-  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+  lastSeenAt           DateTime  @default(now()) @map("last_seen_at") @db.Timestamp(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamp(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
