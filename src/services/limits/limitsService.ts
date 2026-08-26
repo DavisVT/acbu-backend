@@ -13,10 +13,7 @@ import { reserveTracker, ReserveTracker } from "../reserve/ReserveTracker";
 // import { basketService } from '../basket';
 import type { Audience } from "../../middleware/auth";
 import { AppError } from "../../middleware/errorHandler";
-import {
-  getStartOfZonedDay,
-  getStartOfZonedMonth,
-} from "../../utils/dateUtils";
+import { getStartOfZonedDay, getStartOfZonedMonth } from "../../utils/dateUtils";
 
 function buildActorWhere(userId: string | null, organizationId: string | null) {
   if (userId) {
@@ -151,12 +148,8 @@ export async function checkWithdrawalLimits(
  * Circuit breaker: return true if single-currency withdrawals for this currency are paused
  * (reserve below threshold % of target).
  */
-export async function isCurrencyWithdrawalPaused(
-  currency: string,
-): Promise<boolean> {
-  const status = await reserveTracker.getReserveStatus(
-    ReserveTracker.SEGMENT_TRANSACTIONS,
-  );
+export async function isCurrencyWithdrawalPaused(currency: string): Promise<boolean> {
+  const status = await reserveTracker.getReserveStatus(ReserveTracker.SEGMENT_TRANSACTIONS);
   const curr = status.currencies.find((c) => c.currency === currency);
   if (!curr) return false;
   const targetWeight = curr.targetWeight;
@@ -170,8 +163,6 @@ export async function isCurrencyWithdrawalPaused(
  * Circuit breaker: return true if new minting should be paused (reserve ratio below 102%).
  */
 export async function isMintingPaused(): Promise<boolean> {
-  const ratio = await reserveTracker.calculateReserveRatio(
-    ReserveTracker.SEGMENT_TRANSACTIONS,
-  );
+  const ratio = await reserveTracker.calculateReserveRatio(ReserveTracker.SEGMENT_TRANSACTIONS);
   return ratio < (await getCircuitBreakerMinReserveRatio());
 }

@@ -15,15 +15,8 @@ import {
   DeviceFingerprint,
   isDeviceRateLimited,
 } from "./deviceVerification";
-import {
-  checkRecoveryRateLimit,
-  recordRecoveryAttempt,
-} from "./rateLimitService";
-import {
-  auditRecoveryEvent,
-  detectSuspiciousPatterns,
-  rotateUserSessions,
-} from "./auditService";
+import { checkRecoveryRateLimit, recordRecoveryAttempt } from "./rateLimitService";
+import { auditRecoveryEvent, detectSuspiciousPatterns, rotateUserSessions } from "./auditService";
 
 const OTP_EXPIRY_MINUTES = 10;
 
@@ -83,19 +76,13 @@ async function publishOtpToQueue(payload: {
 /**
  * Step 1: Enhanced security verification with rate limiting, device verification, and audit logging.
  */
-export async function unlockApp(
-  params: UnlockAppParams,
-): Promise<UnlockAppResult> {
+export async function unlockApp(params: UnlockAppParams): Promise<UnlockAppResult> {
   const { identifier, passcode, deviceFingerprint } = params;
   const trimmed = identifier.trim().toLowerCase();
   const isEmail = trimmed.includes("@") && trimmed.includes(".");
   const isPhone = /^\+[0-9]{10,15}$/.test(identifier.trim());
 
-  const where = isEmail
-    ? { email: trimmed }
-    : isPhone
-      ? { phoneE164: identifier.trim() }
-      : null;
+  const where = isEmail ? { email: trimmed } : isPhone ? { phoneE164: identifier.trim() } : null;
   if (!where) {
     throw new Error("identifier must be email or E.164 phone");
   }
@@ -118,11 +105,7 @@ export async function unlockApp(
   }
 
   // Check rate limits BEFORE any verification
-  const rateLimitResult = await checkRecoveryRateLimit(
-    identifier,
-    user.id,
-    deviceFingerprint.ip,
-  );
+  const rateLimitResult = await checkRecoveryRateLimit(identifier, user.id, deviceFingerprint.ip);
 
   if (!rateLimitResult.allowed) {
     await recordRecoveryAttempt(
@@ -138,10 +121,7 @@ export async function unlockApp(
   }
 
   // Check device rate limiting
-  const deviceRateLimited = await isDeviceRateLimited(
-    user.id,
-    deviceFingerprint,
-  );
+  const deviceRateLimited = await isDeviceRateLimited(user.id, deviceFingerprint);
   if (deviceRateLimited) {
     await recordRecoveryAttempt(
       user.id,
@@ -152,9 +132,7 @@ export async function unlockApp(
       deviceFingerprint.userAgent,
     );
 
-    throw new Error(
-      "Too many attempts from this device. Please try again later.",
-    );
+    throw new Error("Too many attempts from this device. Please try again later.");
   }
 
   // Verify passcode

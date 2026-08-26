@@ -51,7 +51,9 @@ function microTimestamp(): string {
   // Microseconds within the current millisecond (0–999)
   const microWithinMs = Number((hrNs / 1000n) % 1000n);
   // ISO string: "2026-06-24T12:28:32.235Z" → insert microseconds before "Z"
-  return now.toISOString().replace(/\.(\d{3})Z$/, (_, ms) => `.${ms}${String(microWithinMs).padStart(3, "0")}Z`);
+  return now
+    .toISOString()
+    .replace(/\.(\d{3})Z$/, (_, ms) => `.${ms}${String(microWithinMs).padStart(3, "0")}Z`);
 }
 
 /**
@@ -67,15 +69,10 @@ function microTimestamp(): string {
  *   - correlationId (x-request-id header or auto-generated UUID)
  *   - standard HTTP fields (method, path, statusCode, durationMs, userAgent)
  */
-export const requestLogger = (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): void => {
+export const requestLogger = (req: Request, res: Response, next: NextFunction): void => {
   const startHr = process.hrtime.bigint();
   const timestamp = microTimestamp();
-  const correlationId =
-    (req.headers["x-request-id"] as string | undefined) ?? crypto.randomUUID();
+  const correlationId = (req.headers["x-request-id"] as string | undefined) ?? crypto.randomUUID();
 
   // Propagate correlationId so downstream code can reference it
   res.setHeader("x-request-id", correlationId);

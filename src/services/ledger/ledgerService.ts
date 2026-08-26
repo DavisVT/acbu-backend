@@ -84,8 +84,7 @@ export async function createLedgerEntries(
 
     try {
       const { count } = await prisma.$transaction(
-        (tx: Prisma.TransactionClient) =>
-          tx.transaction.createMany({ data: chunk }),
+        (tx: Prisma.TransactionClient) => tx.transaction.createMany({ data: chunk }),
         {
           timeout: LEDGER_TX_TIMEOUT_MS,
           maxWait: LEDGER_TX_MAX_WAIT_MS,

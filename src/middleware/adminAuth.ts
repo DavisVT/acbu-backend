@@ -8,11 +8,7 @@ import { AppError } from "./errorHandler";
  * Requires the `x-admin-key` header to match ADMIN_API_KEY env var.
  * If ADMIN_API_KEY is not configured, the endpoint is blocked entirely.
  */
-export function requireAdminApiKey(
-  req: Request,
-  _res: Response,
-  next: NextFunction,
-): void {
+export function requireAdminApiKey(req: Request, _res: Response, next: NextFunction): void {
   const { adminApiKey } = config;
   if (!adminApiKey) {
     next(new AppError("Admin endpoint not available", 503));

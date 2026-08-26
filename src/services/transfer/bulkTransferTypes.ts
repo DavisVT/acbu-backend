@@ -27,11 +27,7 @@ export interface BulkTransferRowResult {
   errorMessage?: string;
 }
 
-export type BulkTransferJobStatus =
-  | "pending"
-  | "processing"
-  | "completed"
-  | "failed";
+export type BulkTransferJobStatus = "pending" | "processing" | "completed" | "failed";
 
 export interface BulkTransferJobResult {
   /** Unique job ID for tracking and polling */

@@ -216,23 +216,17 @@ describe("limitsService", () => {
 
   describe("isMintingPaused", () => {
     it("returns true when reserve ratio is below minimum (1.01 < 1.02)", async () => {
-      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(
-        1.01,
-      );
+      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(1.01);
       expect(await isMintingPaused()).toBe(true);
     });
 
     it("returns false when reserve ratio is exactly at minimum (1.02)", async () => {
-      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(
-        1.02,
-      );
+      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(1.02);
       expect(await isMintingPaused()).toBe(false);
     });
 
     it("returns false when reserve ratio is comfortably above minimum (1.05)", async () => {
-      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(
-        1.05,
-      );
+      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(1.05);
       expect(await isMintingPaused()).toBe(false);
     });
   });

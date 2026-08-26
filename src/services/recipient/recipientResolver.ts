@@ -5,11 +5,7 @@
  */
 import { prisma } from "../../config/database";
 import { logger } from "../../config/logger";
-import type {
-  ResolveResult,
-  RecipientQuery,
-  RecipientQueryKind,
-} from "./types";
+import type { ResolveResult, RecipientQuery, RecipientQueryKind } from "./types";
 
 const STELLAR_ADDRESS_LENGTH = 56;
 const E164_PREFIX = "+";
@@ -38,10 +34,7 @@ export function normalizeRecipientQuery(
   if (trimmed.includes("@") && trimmed.includes(".")) {
     return { kind: "email", value: lower };
   }
-  if (
-    trimmed.length === STELLAR_ADDRESS_LENGTH &&
-    /^G[A-Z2-7]+$/.test(trimmed)
-  ) {
+  if (trimmed.length === STELLAR_ADDRESS_LENGTH && /^G[A-Z2-7]+$/.test(trimmed)) {
     return { kind: "address", value: trimmed };
   }
   // Default: treat as username (no @)

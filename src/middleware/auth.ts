@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import { AppError } from "./errorHandler";
 import { logger } from "../config/logger";
 import { EXPECTED_JWT_TYP } from "./authMiddleware";
+import { requireAdminApiKey } from "./adminAuth";
 import { PermissionScopeEnum, PermissionScope } from "../types/permissions";
 
 export type Audience = "retail" | "business" | "government";
@@ -111,6 +112,15 @@ function rejectIfJwtToken(token: string): void {
     }
   }
 }
+
+/**
+ * Validate the admin API key for admin-only routes (e.g. /v1/admin/weight-drift-audits).
+ * Requires the `x-admin-key` header to match ADMIN_API_KEY env var.
+ *
+ * Delegates to requireAdminApiKey (middleware/adminAuth.ts) so the timing-safe
+ * comparison against ADMIN_API_KEY has a single implementation.
+ */
+export const validateAdminKey = requireAdminApiKey;
 
 /**
  * Middleware to validate API key

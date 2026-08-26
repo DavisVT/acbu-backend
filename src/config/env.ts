@@ -43,6 +43,8 @@ const envSchema = z.object({
     .positive()
     .default(15 * 60 * 1000),
   AUTH_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(10),
+  ADMIN_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
+  ADMIN_RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(30),
   RATE_LIMIT_FALLBACK_MAX_REQUESTS: z.coerce.number().int().positive().default(20),
   RATE_LIMIT_CIRCUIT_BREAKER_THRESHOLD: z.coerce.number().int().positive().default(5),
   RATE_LIMIT_CIRCUIT_BREAKER_COOLDOWN_MS: z.coerce.number().int().positive().default(60000),
@@ -276,6 +278,8 @@ export const config = {
   rateLimitMaxRequests: env.RATE_LIMIT_MAX_REQUESTS,
   authRateLimitWindowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
   authRateLimitMaxRequests: env.AUTH_RATE_LIMIT_MAX_REQUESTS,
+  adminRateLimitWindowMs: env.ADMIN_RATE_LIMIT_WINDOW_MS,
+  adminRateLimitMaxRequests: env.ADMIN_RATE_LIMIT_MAX_REQUESTS,
   maxSigninAttempts: env.MAX_SIGNIN_ATTEMPTS,
   signinLockoutDurationMs: env.SIGNIN_LOCKOUT_DURATION_MS,
 

@@ -15,11 +15,7 @@ import {
 } from "../controllers/authController";
 import { validateApiKey } from "../middleware/auth";
 import type { AuthRequest } from "../middleware/auth";
-import {
-  authRateLimiter,
-  apiKeyRateLimiter,
-  twoFaRateLimiter,
-} from "../middleware/rateLimiter";
+import { authRateLimiter, apiKeyRateLimiter, twoFaRateLimiter } from "../middleware/rateLimiter";
 
 /**
  * @swagger
@@ -232,11 +228,7 @@ function normalizeRateLimitIdentifier(value: string): string {
   return trimmed.toLowerCase().replace(/\s/g, "");
 }
 
-function normalizeAuthRateLimitBody(
-  req: AuthRequest,
-  _res: Response,
-  next: NextFunction,
-): void {
+function normalizeAuthRateLimitBody(req: AuthRequest, _res: Response, next: NextFunction): void {
   const body = (req.body ?? {}) as Record<string, unknown>;
 
   if (typeof body.identifier === "string") {
@@ -253,13 +245,7 @@ function normalizeAuthRateLimitBody(
 router.post("/signup", authRateLimiter, postSignup);
 // #269: twoFaRateLimiter adds per-user/IP keyed limiting on top of the IP-only authRateLimiter
 // #391: normalize identifier/email before the per-user limiter so case variants share one budget
-router.post(
-  "/signin",
-  authRateLimiter,
-  normalizeAuthRateLimitBody,
-  twoFaRateLimiter,
-  postSignin,
-);
+router.post("/signin", authRateLimiter, normalizeAuthRateLimitBody, twoFaRateLimiter, postSignin);
 router.post(
   "/signin/verify-2fa",
   authRateLimiter,

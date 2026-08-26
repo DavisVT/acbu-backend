@@ -23,10 +23,7 @@ export interface WebhookPayload {
   data: Record<string, unknown>;
 }
 
-function buildPayload(
-  eventType: WebhookEventType,
-  data: Record<string, unknown>,
-): WebhookPayload {
+function buildPayload(eventType: WebhookEventType, data: Record<string, unknown>): WebhookPayload {
   return {
     event: eventType,
     timestamp: new Date().toISOString(),
@@ -51,9 +48,7 @@ export async function enqueueWebhook(
 
   const payload = buildPayload(eventType, data);
   const payloadStr = JSON.stringify(payload);
-  const signature = config.webhook.secret
-    ? signPayload(payloadStr, config.webhook.secret)
-    : null;
+  const signature = config.webhook.secret ? signPayload(payloadStr, config.webhook.secret) : null;
 
   const webhook = await prisma.webhook.create({
     data: {
@@ -67,16 +62,16 @@ export async function enqueueWebhook(
 
   const ch = await connectRabbitMQ();
   await ch.assertQueue(QUEUES.WEBHOOKS, { durable: true });
-  ch.sendToQueue(
-    QUEUES.WEBHOOKS,
-    Buffer.from(JSON.stringify({ webhookId: webhook.id })),
-    { persistent: true },
-  );
+  ch.sendToQueue(QUEUES.WEBHOOKS, Buffer.from(JSON.stringify({ webhookId: webhook.id })), {
+    persistent: true,
+  });
   logger.info("Webhook enqueued", { webhookId: webhook.id, eventType });
   return webhook.id;
 }
 
-export async function deliverWebhook(webhookId: string): Promise<{ success: boolean; terminal: boolean }> {
+export async function deliverWebhook(
+  webhookId: string,
+): Promise<{ success: boolean; terminal: boolean }> {
   const webhook = await prisma.webhook.findUnique({
     where: { id: webhookId },
   });
@@ -107,9 +102,7 @@ export async function deliverWebhook(webhookId: string): Promise<{ success: bool
   const payloadStr = JSON.stringify(webhook.payload);
   const signature =
     webhook.signature ??
-    (config.webhook.secret
-      ? signPayload(payloadStr, config.webhook.secret)
-      : null);
+    (config.webhook.secret ? signPayload(payloadStr, config.webhook.secret) : null);
 
   try {
     await axios.post(url, webhook.payload, {

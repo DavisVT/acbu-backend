@@ -1,14 +1,15 @@
 /**
  * Listens for MintEvent (contract_credited) on acbu_minting contract and enqueues USDC_CONVERSION jobs.
  */
-import {
-  eventListener,
-  ContractEvent,
-} from "../services/stellar/eventListener";
+import { eventListener, ContractEvent } from "../services/stellar/eventListener";
 import { getContractAddresses } from "../config/contracts";
 import { enqueueUsdcConversion } from "./usdcConversionJob";
 import { logger } from "../config/logger";
 import { prisma } from "../config/database";
+import {
+  resolveTxHash,
+  verifyTxHashOnChain,
+} from "../services/stellar/txHashValidation";
 
 const MINT_EFFECT_TYPES = ["contract_credited", "contract_effect"]; // Horizon effect types for mint/credit
 
@@ -19,35 +20,16 @@ function parseAmountFromEffect(data: Record<string, unknown>): string | null {
   return null;
 }
 
-function parseRecipientFromEffect(
-  data: Record<string, unknown>,
-): string | null {
+function parseRecipientFromEffect(data: Record<string, unknown>): string | null {
   const account = data.account ?? data.recipient ?? data.to;
   if (typeof account === "string" && account.length === 56) return account;
   return null;
 }
 
 /**
- * Try to get transaction hash from effect (Horizon may expose it via _links or transaction_id).
- */
-function parseTxHashFromEffect(data: Record<string, unknown>): string | null {
-  const txHash = data.transaction_hash ?? data.transaction_id ?? data.tx_hash;
-  if (typeof txHash === "string") return txHash;
-  const links = data._links as Record<string, { href?: string }> | undefined;
-  const txHref = links?.transaction?.href;
-  if (typeof txHref === "string") {
-    const match = txHref.match(/\/([a-f0-9]+)$/i);
-    if (match) return match[1];
-  }
-  return null;
-}
-
-/**
  * Find a pending mint Transaction by blockchain tx hash (set by API after invoke).
  */
-async function findTransactionByBlockchainHash(
-  txHash: string,
-): Promise<string | null> {
+async function findTransactionByBlockchainHash(txHash: string): Promise<string | null> {
   const tx = await prisma.transaction.findFirst({
     where: {
       type: "mint",
@@ -85,30 +67,42 @@ export async function startMintEventListener(): Promise<void> {
     }
 
     const rawTxHash =
-      parseTxHashFromEffect(data) ??
-      (event.data as Record<string, unknown> | undefined)?.id;
+      parseTxHashFromEffect(data) ?? (event.data as Record<string, unknown> | undefined)?.id;
     const txHash: string =
-      typeof rawTxHash === "string"
-        ? rawTxHash
-        : `effect-${event.ledger}-${Date.now()}`;
+      typeof rawTxHash === "string" ? rawTxHash : `effect-${event.ledger}-${Date.now()}`;
     let transactionId: string | null = null;
     if (txHash.length === 64) {
       transactionId = await findTransactionByBlockchainHash(txHash);
     }
+    if (!verified) {
+      logger.warn("Mint event: rejecting event with unverified tx hash", {
+        txHash: resolvedHash,
+        ledger: event.ledger,
+      });
+      return;
+    }
+
+    const onChainValid = await verifyTxHashOnChain(resolvedHash);
+    if (!onChainValid) {
+      logger.warn("Mint event: rejecting event — tx hash not found on-chain", {
+        txHash: resolvedHash,
+        ledger: event.ledger,
+      });
+      return;
+    }
+
+    let transactionId: string | null = null;
+    transactionId = await findTransactionByBlockchainHash(resolvedHash);
 
     await enqueueUsdcConversion({
       usdcAmount: amountStr,
       recipient,
-      txHash,
+      txHash: resolvedHash,
       transactionId: transactionId ?? undefined,
     });
   };
 
-  eventListener.listenToContractEvents(
-    mintingContractId,
-    MINT_EFFECT_TYPES,
-    handler,
-  );
+  eventListener.listenToContractEvents(mintingContractId, MINT_EFFECT_TYPES, handler);
   logger.info("Mint event listener registered", {
     contractId: mintingContractId,
     effectTypes: MINT_EFFECT_TYPES,

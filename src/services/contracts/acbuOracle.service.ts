@@ -62,11 +62,9 @@ export class OracleService {
    */
   async getRate(currency: string): Promise<string> {
     try {
-      const result = await this.contractClient.readContract(
-        this.contractId,
-        "get_rate",
-        [ContractClient.toScVal([[currency]])],
-      );
+      const result = await this.contractClient.readContract(this.contractId, "get_rate", [
+        ContractClient.toScVal([[currency]]),
+      ]);
 
       const rate = ContractClient.fromScVal(result);
       return rate.toString();
@@ -100,11 +98,7 @@ export class OracleService {
    */
   async getValidators(): Promise<string[]> {
     try {
-      const result = await this.contractClient.readContract(
-        this.contractId,
-        "get_validators",
-        [],
-      );
+      const result = await this.contractClient.readContract(this.contractId, "get_validators", []);
 
       const validators = ContractClient.fromScVal(result) as any[];
       return validators.map((v) => v.toString());

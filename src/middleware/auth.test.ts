@@ -31,6 +31,14 @@ jest.mock("bcrypt", () => ({
   hash: jest.fn(),
 }));
 
+import { validateApiKey, generateApiKey, hashApiKey, validateAdminKey } from "./auth";
+import { prisma } from "../config/database";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+import { AppError } from "./errorHandler";
+import type { AuthRequest } from "./auth";
+import type { Request, Response, NextFunction } from "express";
+
 const VALID_KEY = "acbu_" + "a".repeat(12) + "_" + "b".repeat(64);
 const VALID_KEY2 = "acbu_" + "c".repeat(12) + "_" + "d".repeat(64);
 

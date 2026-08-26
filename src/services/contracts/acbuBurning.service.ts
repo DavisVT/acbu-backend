@@ -109,9 +109,7 @@ export class BurningService {
       if (!Array.isArray(parsedResult)) {
         throw new Error("Invalid redeem_basket result: expected array");
       }
-      const localAmounts = parsedResult.map((amount: unknown) =>
-        String(amount),
-      );
+      const localAmounts = parsedResult.map((amount: unknown) => String(amount));
 
       logger.info("Basket redemption successful", {
         transactionHash: result.transactionHash,
@@ -130,11 +128,7 @@ export class BurningService {
 
   async getFeeRate(): Promise<number> {
     try {
-      const result = await this.contractClient.readContract(
-        this.contractId,
-        "get_fee_rate",
-        [],
-      );
+      const result = await this.contractClient.readContract(this.contractId, "get_fee_rate", []);
 
       const feeRate = ContractClient.fromScVal(result);
       return Number(feeRate);
@@ -146,11 +140,7 @@ export class BurningService {
 
   async isPaused(): Promise<boolean> {
     try {
-      const result = await this.contractClient.readContract(
-        this.contractId,
-        "is_paused",
-        [],
-      );
+      const result = await this.contractClient.readContract(this.contractId, "is_paused", []);
 
       return ContractClient.fromScVal(result) as boolean;
     } catch (error) {

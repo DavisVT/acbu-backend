@@ -32,9 +32,7 @@ export async function startUsdcConversionConsumer(): Promise<void> {
       const headers = msg.properties.headers ?? {};
       const retries = typeof headers["x-retries"] === "number" ? headers["x-retries"] : 0;
       try {
-        const body = JSON.parse(
-          msg.content.toString(),
-        ) as UsdcConversionPayload;
+        const body = JSON.parse(msg.content.toString()) as UsdcConversionPayload;
         const { usdcAmount, recipient, txHash, transactionId } = body;
         const usdcNum = Number(usdcAmount);
         if (!(usdcNum > 0)) {
@@ -49,11 +47,7 @@ export async function startUsdcConversionConsumer(): Promise<void> {
           try {
             const router = getFintechRouter();
             const provider = await router.getProvider(currency);
-            await provider.convertCurrency(
-              usdcNum * weightFrac,
-              "USD",
-              currency,
-            );
+            await provider.convertCurrency(usdcNum * weightFrac, "USD", currency);
           } catch (e) {
             logger.warn("USDC conversion: FX skip", { currency, error: e });
           }
@@ -106,9 +100,7 @@ export async function startUsdcConversionConsumer(): Promise<void> {
 /**
  * Enqueue a USDC conversion job (call from MintEvent handler).
  */
-export async function enqueueUsdcConversion(
-  payload: UsdcConversionPayload,
-): Promise<void> {
+export async function enqueueUsdcConversion(payload: UsdcConversionPayload): Promise<void> {
   const ch = await connectRabbitMQ();
   await assertQueueWithDLQ(QUEUE);
   ch.sendToQueue(QUEUE, Buffer.from(JSON.stringify(payload)), {

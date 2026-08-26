@@ -3,10 +3,7 @@
  * Tests the high-precision conversion logic from local currency to USD
  */
 
-import {
-  convertLocalToUsd,
-  convertLocalToUsdWithPrecision,
-} from "./currencyConverter";
+import { convertLocalToUsd, convertLocalToUsdWithPrecision } from "./currencyConverter";
 import { prisma } from "../../config/database";
 import { Decimal } from "@prisma/client/runtime/library";
 
@@ -150,9 +147,7 @@ describe("currencyConverter", () => {
 
       await expect(convertLocalToUsd(100000, "NGN")).rejects.toThrow(
         expect.objectContaining({
-          message: expect.stringContaining(
-            "Exchange rate for NGN is not available or invalid",
-          ),
+          message: expect.stringContaining("Exchange rate for NGN is not available or invalid"),
           statusCode: 503,
         }),
       );
@@ -245,10 +240,12 @@ describe("currencyConverter", () => {
       const result = await convertLocalToUsdWithPrecision(100000, "NGN");
 
       expect(result).toHaveProperty("usdAmount");
+      expect(result).toHaveProperty("usdAmountDecimal");
       expect(result).toHaveProperty("originalAmount");
       expect(result).toHaveProperty("acbuEquivalent");
 
       expect(result.usdAmount).toBeCloseTo(50, 5);
+      expect(result.usdAmountDecimal).toBeInstanceOf(Decimal);
       expect(result.originalAmount).toEqual(new Decimal(100000));
       expect(result.acbuEquivalent).toEqual(new Decimal(100));
     });
@@ -283,12 +280,31 @@ describe("currencyConverter", () => {
       expect(result.acbuEquivalent.toString()).toMatch(/^999\..*$/); // Should be ~999 ACBU
     });
 
+    it("should return usdAmountDecimal as primary Decimal for audit logging", async () => {
+      (prisma.acbuRate.findFirst as jest.Mock).mockResolvedValue({
+        acbuNgn: new Decimal("1000.00"),
+        acbuUsd: new Decimal("0.50"),
+        timestamp: new Date(),
+      });
+
+      const result = await convertLocalToUsdWithPrecision(100000, "NGN");
+
+      // usdAmountDecimal is the primary Decimal field for accounting/audit
+      expect(result).toHaveProperty("usdAmountDecimal");
+      expect(result.usdAmountDecimal).toBeInstanceOf(Decimal);
+      expect(result.usdAmountDecimal.toString()).toBe("50");
+
+      // usdAmount (number) should remain for backwards compatibility
+      expect(result.usdAmount).toBeCloseTo(50, 5);
+
+      // Decimal and number should represent the same value
+      expect(result.usdAmountDecimal.toNumber()).toBeCloseTo(result.usdAmount, 10);
+    });
+
     it("should throw same errors as convertLocalToUsd", async () => {
       (prisma.acbuRate.findFirst as jest.Mock).mockResolvedValue(null);
 
-      await expect(
-        convertLocalToUsdWithPrecision(100000, "NGN"),
-      ).rejects.toThrow(
+      await expect(convertLocalToUsdWithPrecision(100000, "NGN")).rejects.toThrow(
         expect.objectContaining({
           message: expect.stringContaining("Exchange rates not yet available"),
           statusCode: 503,

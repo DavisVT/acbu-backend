@@ -3,10 +3,7 @@ import { withAccelerate } from "@prisma/extension-accelerate";
 import { config } from "./env";
 import { logger } from "./logger";
 import { trace, SpanStatusCode } from "@opentelemetry/api";
-import {
-  poolAcquireHistogram,
-  poolExhaustedCounter,
-} from "./promMetrics";
+import { poolAcquireHistogram, poolExhaustedCounter } from "./promMetrics";
 
 function buildPrismaClient(url: string): PrismaClient {
   return new PrismaClient({
@@ -102,18 +99,18 @@ const ACCELERATE_PROTOCOL_RE = /^prisma(\+postgres)?:\/\//i;
 if (ACCELERATE_PROTOCOL_RE.test(config.databaseUrl)) {
   throw new Error(
     "[database] DATABASE_URL must be a direct PostgreSQL connection string " +
-    "(postgresql:// or postgres://). " +
-    "An Accelerate URL (prisma://) was detected — " +
-    "set that value in PRISMA_ACCELERATE_URL instead. " +
-    "Using Accelerate for migrations will fail.",
+      "(postgresql:// or postgres://). " +
+      "An Accelerate URL (prisma://) was detected — " +
+      "set that value in PRISMA_ACCELERATE_URL instead. " +
+      "Using Accelerate for migrations will fail.",
   );
 }
 
 if (config.prismaAccelerateUrl && !ACCELERATE_PROTOCOL_RE.test(config.prismaAccelerateUrl)) {
   logger.warn(
     "[database] PRISMA_ACCELERATE_URL does not start with prisma:// — " +
-    "expected an Accelerate connection string. " +
-    "If you intended a direct URL, set DATABASE_URL and leave PRISMA_ACCELERATE_URL unset.",
+      "expected an Accelerate connection string. " +
+      "If you intended a direct URL, set DATABASE_URL and leave PRISMA_ACCELERATE_URL unset.",
   );
 }
 
@@ -197,7 +194,7 @@ logger.info(
 );
 logger.info(
   "[database] Migration connection: direct PostgreSQL via DATABASE_URL " +
-  "(run prisma migrate against DATABASE_URL, never against PRISMA_ACCELERATE_URL)",
+    "(run prisma migrate against DATABASE_URL, never against PRISMA_ACCELERATE_URL)",
 );
 
 function isPoolExhaustionError(err: unknown): boolean {
@@ -295,9 +292,9 @@ export async function connectWithRetry(): Promise<void> {
   if (config.nodeEnv === "production" && !config.walBackup.configured) {
     throw new Error(
       "[database] WAL backup is not configured. " +
-      "Set PG_WAL_BACKUP_CONFIGURED=true once WAL archiving / continuous backup is enabled " +
-      "(e.g. pgBackRest, Barman, AWS RDS automated backups, Supabase PITR). " +
-      "A storage failure on the primary will cause permanent data loss without WAL archives.",
+        "Set PG_WAL_BACKUP_CONFIGURED=true once WAL archiving / continuous backup is enabled " +
+        "(e.g. pgBackRest, Barman, AWS RDS automated backups, Supabase PITR). " +
+        "A storage failure on the primary will cause permanent data loss without WAL archives.",
     );
   }
 

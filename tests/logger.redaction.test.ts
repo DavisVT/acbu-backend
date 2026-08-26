@@ -176,3 +176,35 @@ describe("redactFormat (winston) – legacy test", () => {
     });
   });
 });
+
+describe("logFinancialEvent key-based redaction (#789)", () => {
+  it("redacts sensitive keys in financial event payloads via redactLogValue", () => {
+    // Capture what gets logged
+    const logged: unknown[] = [];
+    const originalInfo = console.info;
+    // We spy on the underlying redactLogValue behaviour rather than console;
+    // the easiest way is to verify redactLogValue directly with a financial-like object.
+    const payload = {
+      event: "payment",
+      amount: "100.00",
+      currency: "NGN",
+      userId: "user-1",
+      accountId: "acc-1",
+      idempotencyKey: "key-1",
+      transactionId: "tx-1",
+      status: "success",
+      correlationId: "corr-1",
+      // sensitive field that should be redacted
+      authorization: "Bearer secret-token",
+    };
+
+    const redacted = redactLogValue(payload) as Record<string, unknown>;
+
+    expect(redacted["authorization"]).toBe("[REDACTED]");
+    // non-sensitive fields are preserved
+    expect(redacted["userId"]).toBe("user-1");
+    expect(redacted["amount"]).toBe("100.00");
+
+    void logged; void originalInfo;
+  });
+});

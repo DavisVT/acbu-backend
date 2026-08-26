@@ -20,12 +20,8 @@ export const acbuReserveTrackerService = new ReserveTrackerService(
 export const acbuSavingsVaultService = new SavingsVaultService(
   contractAddresses.savingsVault || "",
 );
-export const acbuLendingPoolService = new LendingPoolService(
-  contractAddresses.lendingPool || "",
-);
-export const acbuEscrowService = new EscrowService(
-  contractAddresses.escrow || "",
-);
+export const acbuLendingPoolService = new LendingPoolService(contractAddresses.lendingPool || "");
+export const acbuEscrowService = new EscrowService(contractAddresses.escrow || "");
 
 export * from "./acbuMinting.service";
 export * from "./acbuBurning.service";

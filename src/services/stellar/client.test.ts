@@ -67,12 +67,20 @@ describe("StellarClient", () => {
     it("throws 'Invalid Stellar secret key' when secret key has wrong format (hex instead of base32)", () => {
       const hexKey = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6";
       expect(() => new StellarClient({ secretKey: hexKey })).toThrow("Invalid Stellar secret key");
-      expect(logger.error).toHaveBeenCalledWith("Failed to initialize Stellar keypair", expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        "Failed to initialize Stellar keypair",
+        expect.any(Object),
+      );
     });
 
     it("throws 'Invalid Stellar secret key' when secret key has wrong length", () => {
-      expect(() => new StellarClient({ secretKey: "too-short" })).toThrow("Invalid Stellar secret key");
-      expect(logger.error).toHaveBeenCalledWith("Failed to initialize Stellar keypair", expect.any(Object));
+      expect(() => new StellarClient({ secretKey: "too-short" })).toThrow(
+        "Invalid Stellar secret key",
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        "Failed to initialize Stellar keypair",
+        expect.any(Object),
+      );
     });
 
     it("does not initialize keypair when secret key is empty", () => {

@@ -25,17 +25,15 @@ export function parseMonetaryString(value: string, fieldName = "amount"): Decima
 
   // Trim whitespace
   const trimmed = value.trim();
-  
+
   // Validate format (no scientific notation, reasonable decimal places)
   if (!trimmed || !/^\d+(\.\d{1,7})?$/.test(trimmed)) {
-    throw new Error(
-      `${fieldName} must be a positive number with up to 7 decimal places`
-    );
+    throw new Error(`${fieldName} must be a positive number with up to 7 decimal places`);
   }
 
   try {
     const decimal = new Decimal(trimmed);
-    
+
     if (decimal.lte(0)) {
       throw new Error(`${fieldName} must be positive`);
     }
@@ -52,10 +50,7 @@ export function parseMonetaryString(value: string, fieldName = "amount"): Decima
  * @param decimals - Number of decimal places for the contract (default 7)
  * @returns Number formatted for contract
  */
-export function decimalToContractNumber(
-  decimal: Decimal,
-  decimals: number = 7
-): number {
+export function decimalToContractNumber(decimal: Decimal, decimals: number = 7): number {
   const scaled = decimal.mul(new Decimal(10).pow(decimals));
   return scaled.toDecimalPlaces(0, Decimal.ROUND_DOWN).toNumber();
 }
@@ -66,10 +61,7 @@ export function decimalToContractNumber(
  * @param decimals - Number of decimal places the contract uses (default 7)
  * @returns Decimal instance
  */
-export function contractNumberToDecimal(
-  contractNumber: number,
-  decimals: number = 7
-): Decimal {
+export function contractNumberToDecimal(contractNumber: number, decimals: number = 7): Decimal {
   return new Decimal(contractNumber).div(new Decimal(10).pow(decimals));
 }
 
@@ -94,17 +86,13 @@ export function validateAmountRange(
   amount: Decimal,
   min: Decimal,
   max: Decimal,
-  fieldName = "amount"
+  fieldName = "amount",
 ): void {
   if (amount.lt(min)) {
-    throw new Error(
-      `${fieldName} must be at least ${min.toString()}`
-    );
+    throw new Error(`${fieldName} must be at least ${min.toString()}`);
   }
-  
+
   if (amount.gt(max)) {
-    throw new Error(
-      `${fieldName} must be at most ${max.toString()}`
-    );
+    throw new Error(`${fieldName} must be at most ${max.toString()}`);
   }
 }

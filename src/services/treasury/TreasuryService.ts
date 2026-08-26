@@ -152,9 +152,7 @@ async function getFxRateWithFallback(currency: string): Promise<FxRate | null> {
 /**
  * Aggregate transaction data by currency
  */
-async function aggregateTransactionsBySegment(): Promise<
-  Map<string, TransactionAggregate>
-> {
+async function aggregateTransactionsBySegment(): Promise<Map<string, TransactionAggregate>> {
   const transactions = await prismaReplica.transaction.findMany({
     where: {
       status: { in: ["completed", "processing"] },

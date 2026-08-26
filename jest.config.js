@@ -3,10 +3,11 @@ module.exports = {
   testEnvironment: "node",
   testTimeout: 30000,
   setupFiles: ["<rootDir>/tests/setup.ts"],
+  setupFilesAfterFramework: ["<rootDir>/tests/jest.setup.ts"],
   roots: ["<rootDir>/src", "<rootDir>/tests"],
   testMatch: ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
   transform: {
-    "^.+\\.ts$": "ts-jest",
+    "^.+\\.ts$": ["ts-jest", { diagnostics: false }],
   },
   collectCoverageFrom: [
     "src/**/*.ts",

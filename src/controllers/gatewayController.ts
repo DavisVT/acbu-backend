@@ -23,9 +23,7 @@ export async function postGatewayCharge(
       amount: String(amount),
       escrowId: Number(escrow_id),
     });
-    res
-      .status(200)
-      .json({ transaction_hash: txHash, escrow_id: Number(escrow_id) });
+    res.status(200).json({ transaction_hash: txHash, escrow_id: Number(escrow_id) });
   } catch (e) {
     next(e);
   }

@@ -69,6 +69,26 @@ describe("env validation", () => {
     expect(config.rateLimitCircuitBreakerCooldownMs).toBe(90000);
   });
 
+  it("coerces admin rate-limit config values from env strings", () => {
+    process.env.ADMIN_RATE_LIMIT_WINDOW_MS = "120000";
+    process.env.ADMIN_RATE_LIMIT_MAX_REQUESTS = "42";
+
+    const { config } = require("../src/config/env");
+
+    expect(config.adminRateLimitWindowMs).toBe(120000);
+    expect(config.adminRateLimitMaxRequests).toBe(42);
+  });
+
+  it("defaults admin rate-limit config when not set", () => {
+    delete process.env.ADMIN_RATE_LIMIT_WINDOW_MS;
+    delete process.env.ADMIN_RATE_LIMIT_MAX_REQUESTS;
+
+    const { config } = require("../src/config/env");
+
+    expect(config.adminRateLimitWindowMs).toBe(60000);
+    expect(config.adminRateLimitMaxRequests).toBe(30);
+  });
+
   it("throws when LOG_LEVEL is invalid", () => {
     process.env.LOG_LEVEL = "invalid_level";
     expect(() => require("../src/config/env")).toThrow(/LOG_LEVEL/);

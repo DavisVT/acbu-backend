@@ -19,54 +19,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: acbu_e2e
-          POSTGRES_PASSWORD: acbu_e2e_pw
-          POSTGRES_DB: acbu_e2e
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U acbu_e2e -d acbu_e2e"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
-      mongodb:
-        image: mongo:7-alpine
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval db.adminCommand('ping')"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
-      rabbitmq:
-        image: rabbitmq:3.13-management-alpine
-        ports:
-          - 5672:5672
-          - 15672:15672
-        options: >-
-          --health-cmd "rabbitmq-diagnostics -q status"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Start local dev infrastructure
+        env:
+          POSTGRES_USER: acbu_e2e
+          POSTGRES_PASSWORD: acbu_e2e_pw
+          POSTGRES_DB: acbu_e2e
+          MONGO_USER: acbu_e2e
+          MONGO_PASSWORD: acbu_e2e_pw
+          MONGO_DB: acbu_e2e_cache
+          RABBITMQ_USER: acbu_e2e
+          RABBITMQ_PASSWORD: acbu_e2e_pw
+        run: docker compose up -d --wait
+
       - uses: pnpm/action-setup@v4
         with:
           version: "10.33.1"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "pnpm"
 
       - name: Install dependencies

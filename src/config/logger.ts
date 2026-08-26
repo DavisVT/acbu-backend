@@ -7,7 +7,7 @@ import { FinancialLogPayload, FinancialEventEnvironment } from "../types/logging
 // Re-export redaction helpers so callers that previously imported from logger.ts
 // continue to work without changes. The implementations live in logRedaction.ts.
 export { redactFormat, redactLogValue, redactPii } from "./logRedaction";
-import { redactFormat, redactPii } from "./logRedaction";
+import { redactFormat, redactLogValue } from "./logRedaction";
 
 export type LogLevel = "error" | "warn" | "info" | "http" | "verbose" | "debug" | "silly";
 
@@ -72,11 +72,11 @@ export const logger = winston.createLogger({
       format: isProduction
         ? consoleFormat
         : winston.format.combine(
-          redactFormat(),
-          winston.format.colorize(),
-          winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
-          winston.format.simple(),
-        ),
+            redactFormat(),
+            winston.format.colorize(),
+            winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
+            winston.format.simple(),
+          ),
     }),
     // Rotating error log: daily rotation, 14-day retention, 100 MB max per file
     new DailyRotateFile({
@@ -136,7 +136,10 @@ const REQUIRED_FIELDS: (keyof FinancialLogPayload)[] = [
   "correlationId",
 ];
 
-export function logFinancialEvent(payload: Omit<FinancialLogPayload, "timestamp" | "environment"> & Partial<Pick<FinancialLogPayload, "timestamp" | "environment">>): void {
+export function logFinancialEvent(
+  payload: Omit<FinancialLogPayload, "timestamp" | "environment"> &
+    Partial<Pick<FinancialLogPayload, "timestamp" | "environment">>,
+): void {
   // Apply defaults (caller-supplied values take precedence)
   const entry: FinancialLogPayload = {
     ...payload,
@@ -144,12 +147,10 @@ export function logFinancialEvent(payload: Omit<FinancialLogPayload, "timestamp"
     environment: payload.environment ?? (config.nodeEnv as FinancialEventEnvironment),
   };
 
-  // Redact PII in string fields
+  // Redact PII in all fields using the full key-based + card-number redaction
   const mutableEntry = entry as unknown as Record<string, unknown>;
   for (const key of Object.keys(mutableEntry)) {
-    if (typeof mutableEntry[key] === "string") {
-      mutableEntry[key] = redactPii(mutableEntry[key] as string);
-    }
+    mutableEntry[key] = redactLogValue(mutableEntry[key], key);
   }
 
   // Validate required fields

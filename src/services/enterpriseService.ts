@@ -97,10 +97,7 @@ function parseCsvBuffer(buffer: Buffer): { headers: string[]; rows: Record<strin
   const missing = required.filter((header) => !headers.includes(header));
 
   if (missing.length > 0) {
-    throw new AppError(
-      `CSV missing required headers: ${missing.join(", ")}`,
-      400,
-    );
+    throw new AppError(`CSV missing required headers: ${missing.join(", ")}`, 400);
   }
 
   const rows = lines.slice(1).map((line) => {
@@ -269,12 +266,7 @@ export async function processBulkTransfer(
         }
 
         results.push(
-          await processRow(
-            params.organizationId,
-            params.senderUserId,
-            validation.data,
-            start + i,
-          ),
+          await processRow(params.organizationId, params.senderUserId, validation.data, start + i),
         );
       }
       return results;

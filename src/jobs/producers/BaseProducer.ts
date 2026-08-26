@@ -1,6 +1,6 @@
-import { assertQueueWithDLQ } from '../../config/rabbitmq';
-import { logger } from '../../config/logger';
-import { publishValidatedMessage, validateMessage } from '../../utils/rabbitmq-validation';
+import { assertQueueWithDLQ } from "../../config/rabbitmq";
+import { logger } from "../../config/logger";
+import { publishValidatedMessage, validateMessage } from "../../utils/rabbitmq-validation";
 
 export abstract class BaseProducer<T> {
   protected abstract queue: string;
@@ -23,18 +23,16 @@ export abstract class BaseProducer<T> {
       const schemaValidated = validateMessage<T>(this.queue, payload);
 
       // Optional subclass-specific post-schema checks/transforms.
-      const finalPayload = this.validate
-        ? await this.validate(schemaValidated)
-        : schemaValidated;
+      const finalPayload = this.validate ? await this.validate(schemaValidated) : schemaValidated;
 
       await publishValidatedMessage(this.queue, finalPayload, options);
 
-      logger.debug('Message published successfully', {
+      logger.debug("Message published successfully", {
         queue: this.queue,
         payload: finalPayload,
       });
     } catch (error) {
-      logger.error('Failed to publish message', {
+      logger.error("Failed to publish message", {
         queue: this.queue,
         error: error instanceof Error ? error.message : String(error),
         payload,

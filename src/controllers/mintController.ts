@@ -18,10 +18,7 @@ import {
   isAllowedDepositCurrency,
   isForbiddenDepositCurrency,
 } from "../config/basket";
-import {
-  checkDepositLimits,
-  isMintingPaused,
-} from "../services/limits/limitsService";
+import { checkDepositLimits, isMintingPaused } from "../services/limits/limitsService";
 import { enqueueUsdcConvertAndMint } from "../jobs/usdcConvertAndMintJob";
 import { AppError } from "../middleware/errorHandler";
 import { ErrorCodes } from "../types/errorCodes";
@@ -91,10 +88,7 @@ export async function mintFromUsdc(
     }
 
     const { usdc_amount, wallet_address } = parsed.data;
-    const userWalletAddress = await assertUserWalletAddress(
-      userId,
-      wallet_address,
-    );
+    const userWalletAddress = await assertUserWalletAddress(userId, wallet_address);
     const usdcDecimal = parseMonetaryString(usdc_amount, "usdc_amount");
     // SECURITY: Always enforce circuit breaker and deposit limits
     // Previously these checks were skipped when req.audience was undefined,
@@ -111,12 +105,7 @@ export async function mintFromUsdc(
     // Apply deposit limits - use retail as default if no audience is set
     // FIX #32: Defaulting to "retail" prevents limit bypass when audience is undefined
     const audience = req.audience || "retail";
-    await checkDepositLimits(
-      audience,
-      usdcDecimal,
-      userId,
-      req.apiKey?.organizationId ?? null,
-    );
+    await checkDepositLimits(audience, usdcDecimal, userId, req.apiKey?.organizationId ?? null);
 
     let swap;
     try {
@@ -268,9 +257,7 @@ export const depositBodySchema = z.object({
     .length(3)
     .transform((value) => value.toUpperCase())
     .refine(
-      (currency) =>
-        isAllowedDepositCurrency(currency) ||
-        isForbiddenDepositCurrency(currency),
+      (currency) => isAllowedDepositCurrency(currency) || isForbiddenDepositCurrency(currency),
       {
         message: `Currency must be one of: ${[
           ...BASKET_CURRENCIES,
