@@ -13,6 +13,7 @@ import { generateApiKey } from "../../middleware/auth";
 import { signChallengeToken, verifyChallengeToken } from "../../utils/jwt";
 import { logger } from "../../config/logger";
 import { getRabbitMQChannel } from "../../config/rabbitmq";
+import { generateId } from "../../utils/idGenerator";
 import { QUEUES } from "../../config/rabbitmq";
 import { ensureWalletForUser } from "../wallet/walletService";
 import { logAudit } from "../audit";
@@ -925,7 +926,7 @@ export async function issueRefreshToken(
   const { userId } = params;
   const token = generateSecureRefreshToken();
   const tokenHash = await hashRefreshToken(token);
-  const tokenFamilyId = randomUUID();
+  const tokenFamilyId = generateId();
   const expiresAt = new Date(
     Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
   );
@@ -1013,7 +1014,7 @@ export async function refreshAccessToken(
   // Issue a new refresh token in a NEW family
   const newToken = generateSecureRefreshToken();
   const newTokenHash = await hashRefreshToken(newToken);
-  const newTokenFamilyId = randomUUID();
+  const newTokenFamilyId = generateId();
   const newExpiresAt = new Date(
     Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
   );

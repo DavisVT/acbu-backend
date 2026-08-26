@@ -29,6 +29,21 @@ We will acknowledge security reports as soon as practical, investigate privately
 
 Please allow reasonable time for triage and remediation before sharing details publicly.
 
+## Static Application Security Testing (SAST)
+
+This repository runs **CodeQL** and **Semgrep** on every push and pull request to
+detect security vulnerabilities before they ship.
+
+### CI Workflows
+- **codeql.yml**: GitHub CodeQL with the `security-and-quality` query suite. Results
+  surface in the GitHub Security tab.
+- **semgrep.yml**: Semgrep using the repo-root `.semgrep.yml` rules plus the OWASP
+  Top Ten and security-audit rulesets. Fails on `ERROR`-severity findings.
+
+Both jobs are configured as **required status checks** so PRs are blocked on
+critical findings. Shared workflow templates live in `ci/workflows/` and can be
+reused across the platform's repositories (see `ci/workflows/README.md`).
+
 ## Secret Scanning (Gitleaks)
 
 This repository uses **gitleaks** to detect secrets in the git history and block commits containing credentials.

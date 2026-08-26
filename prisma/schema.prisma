@@ -14,17 +14,17 @@ enum ApiKeyType {
 }
 
 model Organization {
-  id               String            @id @default(uuid()) @db.Uuid
-  name             String?           @db.VarChar(255)
-  kycStatus        String            @default("pending") @map("kyc_status") @db.VarChar(20)
-  kycVerifiedAt    DateTime?         @map("kyc_verified_at") @db.Timestamp(6)
-  actorType        String            @default("sme") @map("actor_type") @db.VarChar(20) // 'sme' | 'enterprise' | 'merchant' | 'government'
-  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamp(6)
-  apiKeys          ApiKey[]          @relation("OrganizationApiKeys")
-  users            User[]            @relation("UserOrganization")
-  salaryBatches    SalaryBatch[]
-  salarySchedules  SalarySchedule[]
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String?          @db.VarChar(255)
+  kycStatus       String           @default("pending") @map("kyc_status") @db.VarChar(20)
+  kycVerifiedAt   DateTime?        @map("kyc_verified_at") @db.Timestamp(6)
+  actorType       String           @default("sme") @map("actor_type") @db.VarChar(20) // 'sme' | 'enterprise' | 'merchant' | 'government'
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamp(6)
+  apiKeys         ApiKey[]         @relation("OrganizationApiKeys")
+  users           User[]           @relation("UserOrganization")
+  salaryBatches   SalaryBatch[]
+  salarySchedules SalarySchedule[]
   bulkTransferJobs BulkTransferJob[]
   transactions     Transaction[]     @relation("OrganizationTransactions")
 
@@ -33,6 +33,9 @@ model Organization {
 }
 
 model User {
+  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stellarAddress         String?          @unique @db.VarChar(56)
+  kycStatus              String           @default("pending") @db.VarChar(20)
   id                     String           @id @default(uuid()) @db.Uuid
   stellarAddress         String?          @unique @db.VarChar(56)
   kycStatus              String           @default("pending") @map("kyc_status") @db.VarChar(20)
@@ -84,7 +87,7 @@ model User {
 }
 
 model Transaction {
-  id               String           @id @default(uuid()) @db.Uuid
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId           String?          @map("user_id") @db.Uuid
   organizationId   String?          @map("organization_id") @db.Uuid
   idempotencyKey   String?          @unique(map: "idx_transactions_idempotency_key") @map("idempotency_key") @db.VarChar(255)
@@ -126,7 +129,7 @@ model Transaction {
 }
 
 model Reserve {
-  id              String   @id @default(uuid()) @db.Uuid
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   currency        String   @db.VarChar(3)
   segment         String   @default("transactions") @db.VarChar(20) // 'transactions' | 'investment_savings'
   targetWeight    Decimal  @map("target_weight") @db.Decimal(5, 2)
@@ -144,7 +147,7 @@ model Reserve {
 }
 
 model ReserveHistory {
-  id             String   @id @default(uuid()) @db.Uuid
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   currency       String   @db.VarChar(3)
   amountChange   Decimal  @map("amount_change") @db.Decimal(20, 2)
   reason         String?  @db.VarChar(100) // 'mint', 'burn', 'rebalance', 'conversion'
@@ -162,7 +165,7 @@ model ReserveHistory {
 }
 
 model OracleRate {
-  id       String  @id @default(uuid()) @db.Uuid
+  id       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   currency String  @db.VarChar(3)
   rateUsd  Decimal @map("rate_usd") @db.Decimal(20, 8)
 
@@ -181,7 +184,7 @@ model OracleRate {
 }
 
 model AcbuRate {
-  id           String   @id @default(uuid()) @db.Uuid
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   acbuUsd      Decimal  @map("acbu_usd") @db.Decimal(20, 8)
   acbuEur      Decimal? @map("acbu_eur") @db.Decimal(20, 8)
   acbuGbp      Decimal? @map("acbu_gbp") @db.Decimal(20, 8)
@@ -204,7 +207,7 @@ model AcbuRate {
 
 /// Metrics for basket weight calculation (GDP, trade, liquidity). External APIs + internal data.
 model BasketMetrics {
-  id             String   @id @default(uuid()) @db.Uuid
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   currency       String   @db.VarChar(3)
   period         String   @db.VarChar(20)
   gdpScore       Decimal? @map("gdp_score") @db.Decimal(10, 4)
@@ -223,7 +226,7 @@ model BasketMetrics {
 /// Current basket composition (currencies + weights). Source of truth for reserve/oracle/rebalancing.
 /// One row per currency per version; weights from stats + DAO, not hardcoded.
 model BasketConfig {
-  id            String   @id @default(uuid()) @db.Uuid
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   effectiveFrom DateTime @map("effective_from") @db.Timestamp(6)
   currency      String   @db.VarChar(3)
   weight        Decimal  @db.Decimal(5, 2)
@@ -238,7 +241,7 @@ model BasketConfig {
 }
 
 model RebalancingEvent {
-  id          String    @id @default(uuid()) @db.Uuid
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   type        String    @db.VarChar(20)
   status      String    @default("pending") @db.VarChar(20)
   adjustments Json?
@@ -296,19 +299,19 @@ model WeightDriftCurrency {
 }
 
 model AuditTrail {
-  id             String   @id @default(uuid()) @db.Uuid
-  eventType      String   @map("event_type") @db.VarChar(50)
-  entityType     String?  @map("entity_type") @db.VarChar(50)
-  entityId       String?  @map("entity_id") @db.Uuid
-  action         String   @db.VarChar(50)
-  oldValue       Json?    @map("old_value")
-  newValue       Json?    @map("new_value")
-  performedBy    String?  @map("performed_by") @db.Uuid
-  actorType      String?  @map("actor_type") @db.VarChar(20)
-  keyType        String?  @map("key_type") @db.VarChar(32)
-  organizationId String?  @map("organization_id") @db.Uuid
-  reason         String?  @db.VarChar(255)
-  timestamp      DateTime @default(now()) @db.Timestamp(6)
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventType   String   @map("event_type") @db.VarChar(50)
+  entityType  String?  @map("entity_type") @db.VarChar(50)
+  entityId    String?  @map("entity_id") @db.Uuid
+  action      String   @db.VarChar(50)
+  oldValue    Json?    @map("old_value")
+  newValue    Json?    @map("new_value")
+  performedBy String?  @map("performed_by") @db.Uuid
+  actorType   String?  @map("actor_type") @db.VarChar(20)
+  keyType     String?  @map("key_type") @db.VarChar(32)
+  organizationId String? @map("organization_id") @db.Uuid
+  reason      String?  @db.VarChar(255)
+  timestamp   DateTime @default(now()) @db.Timestamp(6)
 
   @@index([eventType], map: "idx_audit_trail_event_type")
   @@index([entityType], map: "idx_audit_trail_entity_type")
@@ -320,7 +323,7 @@ model AuditTrail {
 }
 
 model Webhook {
-  id            String    @id @default(uuid()) @db.Uuid
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   transactionId String?   @map("transaction_id") @db.Uuid
   eventType     String    @map("event_type") @db.VarChar(50)
   payload       Json
@@ -343,7 +346,7 @@ model Webhook {
 
 /// Deposit USDC or XLM: we run conversion (USDC→XLM) and/or LP/swap in backend; mint is approved once conversion succeeds. Pools/swaps run independently.
 model OnRampSwap {
-  id             String    @id @default(uuid()) @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId         String    @map("user_id") @db.Uuid
   idempotencyKey String?   @unique @map("idempotency_key") @db.VarChar(255)
   stellarAddress String    @map("stellar_address") @db.VarChar(56)
@@ -367,7 +370,7 @@ model OnRampSwap {
 
 /// Investment withdrawal request: retail (24h + message when ready) or business (calendar or 1% early fee).
 model InvestmentWithdrawalRequest {
-  id             String    @id @default(uuid()) @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId         String?   @map("user_id") @db.Uuid
   organizationId String?   @map("organization_id") @db.Uuid
   audience       String    @db.VarChar(20) // 'retail' | 'business'
@@ -386,21 +389,21 @@ model InvestmentWithdrawalRequest {
 }
 
 model ApiKey {
-  id                 String     @id @default(uuid()) @db.Uuid
-  userId             String?    @map("user_id") @db.Uuid
-  organizationId     String?    @map("organization_id") @db.Uuid
-  lookupKey          String?    @unique @map("lookup_key") @db.VarChar(24)
-  keyHash            String     @unique @map("key_hash") @db.VarChar(255)
-  keyType            ApiKeyType @default(USER_KEY) @map("key_type")
-  createdByUserId    String?    @map("created_by_user_id") @db.Uuid
-  emergencyReason    String?    @map("emergency_reason") @db.VarChar(255)
-  emergencyExpiresAt DateTime?  @map("emergency_expires_at") @db.Timestamp(6)
-  permissions        Json? // segment scopes: e.g. ["p2p:read", "p2p:write", "sme:write", "gateway:write"]
-  rateLimit          Int        @default(100) @map("rate_limit")
-  lastUsedAt         DateTime?  @map("last_used_at") @db.Timestamp(6)
-  expiresAt          DateTime?  @map("expires_at") @db.Timestamp(6)
-  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
-  revokedAt          DateTime?  @map("revoked_at") @db.Timestamp(6)
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String?   @map("user_id") @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  lookupKey      String?   @unique @map("lookup_key") @db.VarChar(24)
+  keyHash        String    @unique @map("key_hash") @db.VarChar(255)
+  keyType        ApiKeyType @default(USER_KEY) @map("key_type")
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  emergencyReason String?  @map("emergency_reason") @db.VarChar(255)
+  emergencyExpiresAt DateTime? @map("emergency_expires_at") @db.Timestamp(6)
+  permissions    Json? // segment scopes: e.g. ["p2p:read", "p2p:write", "sme:write", "gateway:write"]
+  rateLimit      Int       @default(100) @map("rate_limit")
+  lastUsedAt     DateTime? @map("last_used_at") @db.Timestamp(6)
+  expiresAt      DateTime? @map("expires_at") @db.Timestamp(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamp(6)
 
   user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization? @relation("OrganizationApiKeys", fields: [organizationId], references: [id], onDelete: Cascade)
@@ -413,7 +416,7 @@ model ApiKey {
 }
 
 model UserPasskey {
-  id           String   @id @default(uuid()) @db.Uuid
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId       String   @map("user_id") @db.Uuid
   credentialId String   @unique @map("credential_id") @db.VarChar(512)
   publicKey    String   @map("public_key")
@@ -427,13 +430,13 @@ model UserPasskey {
 }
 
 model UserDevice {
-  id                   String    @id @default(uuid()) @db.Uuid
-  userId               String    @map("user_id") @db.Uuid
-  fingerprint          String    @map("fingerprint") @db.VarChar(64)
-  userAgent            String?   @map("user_agent") @db.VarChar(512)
-  lastIp               String?   @map("last_ip") @db.VarChar(45)
-  isTrusted            Boolean   @default(false) @map("is_trusted")
-  verificationAttempts Int       @default(0) @map("verification_attempts")
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId               String   @map("user_id") @db.Uuid
+  fingerprint          String   @map("fingerprint") @db.VarChar(64)
+  userAgent            String?  @map("user_agent") @db.VarChar(512)
+  lastIp               String?  @map("last_ip") @db.VarChar(45)
+  isTrusted            Boolean  @default(false) @map("is_trusted")
+  verificationAttempts Int      @default(0) @map("verification_attempts")
   trustedAt            DateTime? @map("trusted_at") @db.Timestamp(6)
   lastSeenAt           DateTime  @default(now()) @map("last_seen_at") @db.Timestamp(6)
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
@@ -449,7 +452,7 @@ model UserDevice {
 }
 
 model Guardian {
-  id             String    @id @default(uuid()) @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId         String    @map("user_id") @db.Uuid
   guardianUserId String?   @map("guardian_user_id") @db.Uuid
   guardianEmail  String?   @map("guardian_email") @db.VarChar(255)
@@ -470,7 +473,7 @@ model Guardian {
 }
 
 model UserContact {
-  id               String   @id @default(uuid()) @db.Uuid
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId           String   @map("user_id") @db.Uuid
   contactUserId    String?  @map("contact_user_id") @db.Uuid
   contactUsername  String?  @map("contact_username") @db.VarChar(64)
@@ -487,7 +490,7 @@ model UserContact {
 }
 
 model OtpChallenge {
-  id        String    @id @default(uuid()) @db.Uuid
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String    @map("user_id") @db.Uuid
   codeHash  String    @map("code_hash") @db.VarChar(255)
   channel   String    @db.VarChar(20) // 'sms' | 'email'
@@ -503,7 +506,7 @@ model OtpChallenge {
 }
 
 model KycApplication {
-  id                      String    @id @default(uuid()) @db.Uuid
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId                  String    @map("user_id") @db.Uuid
   countryCode             String    @map("country_code") @db.VarChar(3)
   status                  String    @db.VarChar(20)
@@ -531,7 +534,7 @@ model KycApplication {
 }
 
 model KycDocument {
-  id            String   @id @default(uuid()) @db.Uuid
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   applicationId String   @map("application_id") @db.Uuid
   kind          String   @db.VarChar(20)
   storageRef    String   @map("storage_ref") @db.VarChar(512)
@@ -548,7 +551,7 @@ model KycDocument {
 }
 
 model KycValidator {
-  id                  String    @id @default(uuid()) @db.Uuid
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId              String    @map("user_id") @db.Uuid
   countryCode         String    @map("country_code") @db.VarChar(3)
   status              String    @db.VarChar(20)
@@ -570,7 +573,7 @@ model KycValidator {
 }
 
 model KycValidation {
-  id            String   @id @default(uuid()) @db.Uuid
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   applicationId String   @map("application_id") @db.Uuid
   validatorId   String   @map("validator_id") @db.Uuid
   result        String   @db.VarChar(20) // pending, approve, reject
@@ -586,7 +589,7 @@ model KycValidation {
 }
 
 model KycValidatorReward {
-  id            String   @id @default(uuid()) @db.Uuid
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   validatorId   String   @map("validator_id") @db.Uuid
   applicationId String   @map("application_id") @db.Uuid
   acbuAmount    Decimal  @map("acbu_amount") @db.Decimal(20, 8)
@@ -604,7 +607,7 @@ model KycValidatorReward {
 }
 
 model SalaryBatch {
-  id             String        @id @default(uuid()) @db.Uuid
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String?       @map("organization_id") @db.Uuid
   userId         String        @map("user_id") @db.Uuid
   status         String        @default("pending") @db.VarChar(20)
@@ -625,17 +628,17 @@ model SalaryBatch {
 }
 
 model SalaryItem {
-  id               String       @id @default(uuid()) @db.Uuid
-  batchId          String       @map("batch_id") @db.Uuid
-  recipientId      String?      @map("recipient_id") @db.Uuid
-  recipientAddress String       @map("recipient_address") @db.VarChar(56)
-  amount           Decimal      @db.Decimal(20, 8)
-  status           String       @default("pending") @db.VarChar(20)
-  transactionId    String?      @unique @map("transaction_id") @db.Uuid
-  errorMessage     String?      @map("error_message") @db.Text
-  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamp(6)
-  batch            SalaryBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batchId          String      @map("batch_id") @db.Uuid
+  recipientId      String?     @map("recipient_id") @db.Uuid
+  recipientAddress String      @map("recipient_address") @db.VarChar(56)
+  amount           Decimal     @db.Decimal(20, 8)
+  status           String      @default("pending") @db.VarChar(20)
+  transactionId    String?     @unique @map("transaction_id") @db.Uuid
+  errorMessage     String?     @map("error_message") @db.Text
+  createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt        DateTime    @updatedAt @map("updated_at") @db.Timestamp(6)
+  batch            SalaryBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   transaction      Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
   @@index([batchId], map: "idx_salary_item_batch_id")
@@ -644,7 +647,7 @@ model SalaryItem {
 }
 
 model SalarySchedule {
-  id             String        @id @default(uuid()) @db.Uuid
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String?       @map("organization_id") @db.Uuid
   userId         String        @map("user_id") @db.Uuid
   name           String        @db.VarChar(100)
@@ -666,18 +669,18 @@ model SalarySchedule {
 }
 
 model BulkTransferJob {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @map("organization_id") @db.Uuid
-  status         String       @default("pending") @db.VarChar(20)
-  totalRows      Int          @map("total_rows")
-  processedRows  Int          @default(0) @map("processed_rows")
-  successCount   Int          @default(0) @map("success_count")
-  failureCount   Int          @default(0) @map("failure_count")
-  failureReport  Json?        @map("failure_report")
-  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamp(6)
-  completedAt    DateTime?    @map("completed_at") @db.Timestamp(6)
-  errorMessage   String?      @map("error_message") @db.Text
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  status         String        @default("pending") @db.VarChar(20)
+  totalRows      Int           @map("total_rows")
+  processedRows  Int           @default(0) @map("processed_rows")
+  successCount   Int           @default(0) @map("success_count")
+  failureCount   Int           @default(0) @map("failure_count")
+  failureReport  Json?         @map("failure_report")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  completedAt    DateTime?     @map("completed_at") @db.Timestamp(6)
+  errorMessage   String?       @map("error_message") @db.Text
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId], map: "idx_bulk_transfer_jobs_organization_id")
   @@index([status], map: "idx_bulk_transfer_jobs_status")
@@ -686,7 +689,7 @@ model BulkTransferJob {
 }
 
 model RecoveryAttempt {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId     String   @map("user_id") @db.Uuid
   identifier String   @db.VarChar(255)
   ip         String?  @db.VarChar(45)
@@ -703,16 +706,16 @@ model RecoveryAttempt {
 }
 
 model InvestmentStrategy {
-  id                  String   @id @default(uuid()) @db.Uuid
-  name                String   @unique @db.VarChar(100)
-  description         String?  @db.Text
-  status              String   @default("active") @db.VarChar(20) // 'active' | 'paused' | 'deprecated'
-  policyLimitUsd      Decimal  @map("policy_limit_usd") @db.Decimal(20, 2)
-  deployedNotionalUsd Decimal  @default(0) @map("deployed_notional_usd") @db.Decimal(20, 2)
-  targetApyBps        Int?     @map("target_apy_bps")
-  riskTier            String   @default("medium") @map("risk_tier") @db.VarChar(20) // 'low' | 'medium' | 'high'
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String   @unique @db.VarChar(100)
+  description          String?  @db.Text
+  status               String   @default("active") @db.VarChar(20) // 'active' | 'paused' | 'deprecated'
+  policyLimitUsd       Decimal  @map("policy_limit_usd") @db.Decimal(20, 2)
+  deployedNotionalUsd  Decimal  @default(0) @map("deployed_notional_usd") @db.Decimal(20, 2)
+  targetApyBps         Int?     @map("target_apy_bps")
+  riskTier             String   @default("medium") @map("risk_tier") @db.VarChar(20) // 'low' | 'medium' | 'high'
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamp(6)
 
   @@index([status], map: "idx_investment_strategies_status")
   @@index([riskTier], map: "idx_investment_strategies_risk_tier")
@@ -720,7 +723,7 @@ model InvestmentStrategy {
 }
 
 model RefreshToken {
-  id              String    @id @default(uuid()) @db.Uuid
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId          String    @map("user_id") @db.Uuid
   tokenFamilyId   String    @map("token_family_id") @db.Uuid
   tokenHash       String    @unique @map("token_hash") @db.VarChar(255)

@@ -25,6 +25,7 @@ import {
   MAX_FILE_SIZE_BYTES,
   assertKeyOwnership,
 } from "../services/storage/s3Service";
+import { generateId } from "../utils/idGenerator";
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -101,7 +102,7 @@ export async function requestUploadUrl(
     // Generate a document ID if not provided
     const documentId =
       body.document_id ??
-      crypto.randomUUID();
+      generateId();
 
     const result = await generateUploadUrl(
       userId,

@@ -1,3 +1,5 @@
+# Secret-scanning CI gate — closes issue #767 (W2-B-057: No secrets scanning in CI).
+# Fails the build if a real or test secret (e.g. a fake AWS key) is committed.
 name: Secret Scan (gitleaks)
 
 on:

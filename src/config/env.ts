@@ -68,6 +68,7 @@ const envSchema = z.object({
     .default("info"),
   LOG_LEVEL_CONSOLE: z.string().optional(),
   LOG_LEVEL_FILE: z.string().optional(),
+  LOG_FILE: z.string().default("logs/app.log"),
   BUSINESS_TIMEZONE: z.string().default("Africa/Lagos"),
   USDC_ISSUER_TESTNET: z.string().trim().min(1).optional(),
   USDC_ISSUER_MAINNET: z.string().trim().min(1).optional(),
@@ -170,11 +171,13 @@ if (parsed.data.NODE_ENV === "production" && !parsed.data.USDC_ISSUER_MAINNET) {
   throw new Error("Missing required environment variable: USDC_ISSUER_MAINNET");
 }
 
-const s3ScanWebhookSecret = process.env.S3_SCAN_WEBHOOK_SECRET?.trim() || "change-me-in-production";
-
-if (parsed.data.NODE_ENV === "production" && s3ScanWebhookSecret === "change-me-in-production") {
+if (
+  parsed.data.NODE_ENV === "production" &&
+  parsed.data.S3_SCAN_WEBHOOK_SECRET === "change-me-in-production"
+) {
   throw new Error("Missing required environment variable: S3_SCAN_WEBHOOK_SECRET");
 }
+
 // #600: Detect placeholder strings like 'Flutterwave secret key', 'Paystack secret key', etc.
 export function isPlaceholderKey(value?: string | null): boolean {
   if (!value || typeof value !== "string") return true;
@@ -222,25 +225,25 @@ export function isPlaceholderKey(value?: string | null): boolean {
 // #382 & #600: Fintech partner keys must never be absent or set to placeholder strings in production.
 if (parsed.data.NODE_ENV === "production") {
   const invalidFintechKeys: string[] = [];
-  if (!process.env.FLUTTERWAVE_SECRET_KEY || isPlaceholderKey(process.env.FLUTTERWAVE_SECRET_KEY))
+  if (!parsed.data.FLUTTERWAVE_SECRET_KEY || isPlaceholderKey(parsed.data.FLUTTERWAVE_SECRET_KEY))
     invalidFintechKeys.push("FLUTTERWAVE_SECRET_KEY");
   if (
     !process.env.FLUTTERWAVE_WEBHOOK_SECRET ||
     isPlaceholderKey(process.env.FLUTTERWAVE_WEBHOOK_SECRET)
   )
     invalidFintechKeys.push("FLUTTERWAVE_WEBHOOK_SECRET");
-  if (!process.env.PAYSTACK_SECRET_KEY || isPlaceholderKey(process.env.PAYSTACK_SECRET_KEY))
+  if (!parsed.data.PAYSTACK_SECRET_KEY || isPlaceholderKey(parsed.data.PAYSTACK_SECRET_KEY))
     invalidFintechKeys.push("PAYSTACK_SECRET_KEY");
-  if (!process.env.BILLS_WEBHOOK_SECRET || isPlaceholderKey(process.env.BILLS_WEBHOOK_SECRET))
+  if (!parsed.data.BILLS_WEBHOOK_SECRET || isPlaceholderKey(parsed.data.BILLS_WEBHOOK_SECRET))
     invalidFintechKeys.push("BILLS_WEBHOOK_SECRET");
   if (
     !process.env.MTN_MOMO_SUBSCRIPTION_KEY ||
     isPlaceholderKey(process.env.MTN_MOMO_SUBSCRIPTION_KEY)
   )
     invalidFintechKeys.push("MTN_MOMO_SUBSCRIPTION_KEY");
-  if (!process.env.MTN_MOMO_API_USER_ID || isPlaceholderKey(process.env.MTN_MOMO_API_USER_ID))
+  if (!parsed.data.MTN_MOMO_API_USER_ID || isPlaceholderKey(parsed.data.MTN_MOMO_API_USER_ID))
     invalidFintechKeys.push("MTN_MOMO_API_USER_ID");
-  if (!process.env.MTN_MOMO_API_KEY || isPlaceholderKey(process.env.MTN_MOMO_API_KEY))
+  if (!parsed.data.MTN_MOMO_API_KEY || isPlaceholderKey(parsed.data.MTN_MOMO_API_KEY))
     invalidFintechKeys.push("MTN_MOMO_API_KEY");
 
   if (invalidFintechKeys.length > 0) {
@@ -283,9 +286,9 @@ export const config = {
 
   // Redis cache (Sentinel / standalone)
   redis: {
-    url: process.env.REDIS_URL?.trim() || undefined,
+    url: env.REDIS_URL?.trim() || undefined,
     sentinels: (() => {
-      const raw = process.env.REDIS_SENTINELS || "";
+      const raw = env.REDIS_SENTINELS || "";
       if (!raw) return [];
       return raw
         .split(",")
@@ -299,84 +302,76 @@ export const config = {
           };
         });
     })(),
-    sentinelName: process.env.REDIS_SENTINEL_NAME || "",
-    password: process.env.REDIS_PASSWORD || "",
-    maxRetriesPerRequest: parseInt(process.env.REDIS_MAX_RETRIES_PER_REQUEST || "3", 10),
-    readonlyRetryAttempts: parseInt(process.env.REDIS_READONLY_RETRY_ATTEMPTS || "3", 10),
-    readonlyRetryDelayMs: parseInt(process.env.REDIS_READONLY_RETRY_DELAY_MS || "100", 10),
+    sentinelName: env.REDIS_SENTINEL_NAME,
+    password: env.REDIS_PASSWORD,
+    maxRetriesPerRequest: env.REDIS_MAX_RETRIES_PER_REQUEST,
+    readonlyRetryAttempts: env.REDIS_READONLY_RETRY_ATTEMPTS,
+    readonlyRetryDelayMs: env.REDIS_READONLY_RETRY_DELAY_MS,
   },
 
   // Logging
   logLevel: env.LOG_LEVEL,
   // Per-transport levels keep debug noise out of production aggregators (#398).
   logConsoleLevel:
-    process.env.LOG_LEVEL_CONSOLE ?? (env.NODE_ENV === "production" ? "info" : env.LOG_LEVEL),
-  logFileLevel:
-    process.env.LOG_LEVEL_FILE ?? (env.NODE_ENV === "production" ? "info" : env.LOG_LEVEL),
-  logFile: process.env.LOG_FILE || "logs/app.log",
+    env.LOG_LEVEL_CONSOLE ?? (env.NODE_ENV === "production" ? "info" : env.LOG_LEVEL),
+  logFileLevel: env.LOG_LEVEL_FILE ?? (env.NODE_ENV === "production" ? "info" : env.LOG_LEVEL),
+  logFile: env.LOG_FILE,
 
   // Business calendar timezone for salary runs and withdrawal windows (#408)
   businessTimeZone: env.BUSINESS_TIMEZONE,
 
   // Fintech APIs
   flutterwave: {
-    publicKey: isPlaceholderKey(process.env.FLUTTERWAVE_PUBLIC_KEY)
+    publicKey: isPlaceholderKey(env.FLUTTERWAVE_PUBLIC_KEY)
       ? ""
-      : process.env.FLUTTERWAVE_PUBLIC_KEY!.trim(),
-    secretKey: isPlaceholderKey(process.env.FLUTTERWAVE_SECRET_KEY)
+      : env.FLUTTERWAVE_PUBLIC_KEY!.trim(),
+    secretKey: isPlaceholderKey(env.FLUTTERWAVE_SECRET_KEY)
       ? ""
-      : process.env.FLUTTERWAVE_SECRET_KEY!.trim(),
-    encryptionKey: isPlaceholderKey(process.env.FLUTTERWAVE_ENCRYPTION_KEY)
+      : env.FLUTTERWAVE_SECRET_KEY!.trim(),
+    encryptionKey: isPlaceholderKey(env.FLUTTERWAVE_ENCRYPTION_KEY)
       ? ""
-      : process.env.FLUTTERWAVE_ENCRYPTION_KEY!.trim(),
-    webhookSecret: isPlaceholderKey(process.env.FLUTTERWAVE_WEBHOOK_SECRET)
+      : env.FLUTTERWAVE_ENCRYPTION_KEY!.trim(),
+    webhookSecret: isPlaceholderKey(env.FLUTTERWAVE_WEBHOOK_SECRET)
       ? ""
-      : process.env.FLUTTERWAVE_WEBHOOK_SECRET!.trim(),
-    baseUrl: process.env.FLUTTERWAVE_BASE_URL || "https://api.flutterwave.com/v3",
+      : env.FLUTTERWAVE_WEBHOOK_SECRET!.trim(),
+    baseUrl: env.FLUTTERWAVE_BASE_URL,
   },
   paystack: {
-    secretKey: isPlaceholderKey(process.env.PAYSTACK_SECRET_KEY)
-      ? ""
-      : process.env.PAYSTACK_SECRET_KEY!.trim(),
-    baseUrl: process.env.PAYSTACK_BASE_URL || "https://api.paystack.co",
+    secretKey: isPlaceholderKey(env.PAYSTACK_SECRET_KEY) ? "" : env.PAYSTACK_SECRET_KEY!.trim(),
+    baseUrl: env.PAYSTACK_BASE_URL,
   },
   // BE-001: HMAC secret for /v1/webhooks/bills/:provider signature verification.
   bills: {
-    webhookSecret: isPlaceholderKey(process.env.BILLS_WEBHOOK_SECRET)
+    webhookSecret: isPlaceholderKey(env.BILLS_WEBHOOK_SECRET)
       ? ""
-      : process.env.BILLS_WEBHOOK_SECRET!.trim(),
+      : env.BILLS_WEBHOOK_SECRET!.trim(),
   },
   mtnMomo: {
-    subscriptionKey: isPlaceholderKey(process.env.MTN_MOMO_SUBSCRIPTION_KEY)
+    subscriptionKey: isPlaceholderKey(env.MTN_MOMO_SUBSCRIPTION_KEY)
       ? ""
-      : process.env.MTN_MOMO_SUBSCRIPTION_KEY!.trim(),
-    apiUserId: isPlaceholderKey(process.env.MTN_MOMO_API_USER_ID)
-      ? ""
-      : process.env.MTN_MOMO_API_USER_ID!.trim(),
-    apiKey: isPlaceholderKey(process.env.MTN_MOMO_API_KEY)
-      ? ""
-      : process.env.MTN_MOMO_API_KEY!.trim(),
+      : env.MTN_MOMO_SUBSCRIPTION_KEY!.trim(),
+    apiUserId: isPlaceholderKey(env.MTN_MOMO_API_USER_ID) ? "" : env.MTN_MOMO_API_USER_ID!.trim(),
+    apiKey: isPlaceholderKey(env.MTN_MOMO_API_KEY) ? "" : env.MTN_MOMO_API_KEY!.trim(),
     baseUrl:
-      process.env.MTN_MOMO_BASE_URL ||
-      (process.env.MTN_MOMO_TARGET_ENVIRONMENT === "production"
+      env.MTN_MOMO_BASE_URL ||
+      (env.MTN_MOMO_TARGET_ENVIRONMENT === "production"
         ? "https://momodeveloper.mtn.com"
         : "https://sandbox.momodeveloper.mtn.com"),
-    targetEnvironment:
-      (process.env.MTN_MOMO_TARGET_ENVIRONMENT as "sandbox" | "production") || "sandbox",
+    targetEnvironment: env.MTN_MOMO_TARGET_ENVIRONMENT,
   },
   s3: {
-    region: process.env.AWS_REGION || process.env.S3_REGION || "us-east-1",
-    bucket: process.env.S3_BUCKET?.trim() || undefined,
-    endpoint: process.env.S3_ENDPOINT || "",
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || process.env.S3_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || process.env.S3_SECRET_ACCESS_KEY || "",
-    uploadUrlTtlSeconds: parseInt(process.env.S3_UPLOAD_URL_TTL_SECONDS || "900", 10),
-    downloadUrlTtlSeconds: parseInt(process.env.S3_DOWNLOAD_URL_TTL_SECONDS || "300", 10),
-    scanWebhookSecret: s3ScanWebhookSecret,
+    region: env.AWS_REGION || env.S3_REGION || "us-east-1",
+    bucket: env.S3_BUCKET?.trim() || undefined,
+    endpoint: env.S3_ENDPOINT,
+    accessKeyId: env.AWS_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID,
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY,
+    uploadUrlTtlSeconds: env.S3_UPLOAD_URL_TTL_SECONDS,
+    downloadUrlTtlSeconds: env.S3_DOWNLOAD_URL_TTL_SECONDS,
+    scanWebhookSecret: env.S3_SCAN_WEBHOOK_SECRET,
   },
   fintech: {
     currencyProviders: ((): Record<string, string> => {
-      const raw = process.env.FINTECH_CURRENCY_PROVIDERS;
+      const raw = env.FINTECH_CURRENCY_PROVIDERS;
       if (raw) {
         try {
           if (raw.startsWith("{")) return JSON.parse(raw) as Record<string, string>;
@@ -407,74 +402,88 @@ export const config = {
 
   // Stellar
   stellar: {
-    network: process.env.STELLAR_NETWORK || "testnet",
-    horizonUrl: process.env.STELLAR_HORIZON_URL || "https://horizon-testnet.stellar.org",
+    network: env.STELLAR_NETWORK,
+    horizonUrl: env.STELLAR_HORIZON_URL,
     /** Soroban RPC (simulate + send). Override if default host fails DNS (e.g. use SDF friendbot list / custom RPC). */
     sorobanRpcUrl: ((): string => {
-      const explicit = process.env.STELLAR_SOROBAN_RPC_URL?.trim();
+      const explicit = env.STELLAR_SOROBAN_RPC_URL?.trim();
       if (explicit) return explicit;
-      const net = process.env.STELLAR_NETWORK || "testnet";
-      return net === "mainnet"
+      return env.STELLAR_NETWORK === "mainnet"
         ? "https://soroban-mainnet.stellar.org"
         : "https://soroban-testnet.stellar.org";
     })(),
-    secretKey: process.env.STELLAR_SECRET_KEY || "",
+    secretKey: env.STELLAR_SECRET_KEY,
     networkPassphrase:
-      process.env.STELLAR_NETWORK === "mainnet"
+      env.STELLAR_NETWORK === "mainnet"
         ? "Public Global Stellar Network ; September 2015"
         : "Test SDF Network ; September 2015",
     /** Network-native asset code shown to callers for wallet bootstrap (default XLM, or PI when bootstrap profile says so). */
     nativeAssetCode: ((): string => {
-      const explicit = process.env.STELLAR_NATIVE_ASSET_CODE?.trim();
+      const explicit = env.STELLAR_NATIVE_ASSET_CODE?.trim();
       if (explicit) return explicit.toUpperCase();
-      const bootstrapProfile = (process.env.TESTNET_CUSTODIAL_BOOTSTRAP || "").trim().toLowerCase();
+      const bootstrapProfile = env.TESTNET_CUSTODIAL_BOOTSTRAP.trim().toLowerCase();
       return bootstrapProfile.includes("pi") ? "PI" : "XLM";
     })(),
     /** Wallet activation strategy. Default keeps the current create-account path, but makes it explicit/configurable. */
-    activationStrategy: (process.env.WALLET_ACTIVATION_STRATEGY || "create_account_native") as
-      | "create_account_native"
-      | "disabled",
+    activationStrategy: env.WALLET_ACTIVATION_STRATEGY,
     /** Optional bootstrap profile from deployment docs/runbooks; used only for config alignment and diagnostics. */
-    bootstrapProfile: process.env.TESTNET_CUSTODIAL_BOOTSTRAP || "",
+    bootstrapProfile: env.TESTNET_CUSTODIAL_BOOTSTRAP,
     /** Minimum network-native balance sent to user wallet for activation. */
     activationAmount: ((): string => {
       const raw =
-        process.env.WALLET_ACTIVATION_AMOUNT ||
-        process.env.WALLET_ACTIVATION_NATIVE ||
-        process.env.WALLET_ACTIVATION_XLM ||
-        process.env.STELLAR_MIN_BALANCE ||
+        env.WALLET_ACTIVATION_AMOUNT ||
+        env.WALLET_ACTIVATION_NATIVE ||
+        env.WALLET_ACTIVATION_XLM ||
+        env.STELLAR_MIN_BALANCE ||
         "1";
       return raw.trim() || "1";
     })(),
     /** Backwards-compatible numeric alias for older callers/tests that still reference minBalanceXlm. */
     minBalanceXlm: (() => {
       const parsed = Number.parseFloat(
-        process.env.WALLET_ACTIVATION_AMOUNT ||
-          process.env.WALLET_ACTIVATION_NATIVE ||
-          process.env.WALLET_ACTIVATION_XLM ||
-          process.env.STELLAR_MIN_BALANCE ||
+        env.WALLET_ACTIVATION_AMOUNT ||
+          env.WALLET_ACTIVATION_NATIVE ||
+          env.WALLET_ACTIVATION_XLM ||
+          env.STELLAR_MIN_BALANCE ||
           "1",
       );
       return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
     })(),
     /** Base transaction fee in stroops used as fallback when dynamic fee fetch is disabled or fails. Default 100. */
-    baseFeeStroops: parseInt(process.env.STELLAR_BASE_FEE_STROOPS || "100", 10),
+    baseFeeStroops: env.STELLAR_BASE_FEE_STROOPS,
     /** When true, fetches the current recommended base fee from Horizon before each transaction. Falls back to baseFeeStroops on failure. */
-    useDynamicFees: process.env.STELLAR_USE_DYNAMIC_FEES === "true",
+    useDynamicFees: env.STELLAR_USE_DYNAMIC_FEES === "true",
     /** Maximum total fee per Soroban transaction in stroops (base + resource fees). Default 10M stroops (~50 XLM at base fee 100). */
-    sorobanMaxFeeStroops: parseInt(process.env.STELLAR_SOROBAN_MAX_FEE_STROOPS || "10000000", 10),
+    sorobanMaxFeeStroops: env.STELLAR_SOROBAN_MAX_FEE_STROOPS,
     /** Minimum total fee per Soroban transaction in stroops to prevent underpricing. Default 5000 stroops. */
-    sorobanMinFeeStroops: parseInt(process.env.STELLAR_SOROBAN_MIN_FEE_STROOPS || "5000", 10),
+    sorobanMinFeeStroops: env.STELLAR_SOROBAN_MIN_FEE_STROOPS,
     /** Circle USDC issuer on Stellar testnet, configured via the environment. */
     usdcIssuerTestnet: env.USDC_ISSUER_TESTNET,
     /** Circle USDC issuer on Stellar mainnet, configured via the environment. */
     usdcIssuerMainnet: env.USDC_ISSUER_MAINNET,
     /** Stellar asset code for the USDC-like swap asset on testnet (4–12 alphanumeric). Default `USDC`. */
-    usdcAssetCodeTestnet: process.env.USDC_ASSET_CODE_TESTNET || "USDC",
+    usdcAssetCodeTestnet: env.USDC_ASSET_CODE_TESTNET,
     /** Stellar asset code for the USDC-like swap asset on mainnet. Default `USDC`. */
-    usdcAssetCodeMainnet: process.env.USDC_ASSET_CODE_MAINNET || "USDC",
+    usdcAssetCodeMainnet: env.USDC_ASSET_CODE_MAINNET,
     /** Slippage tolerance for the USDC→XLM DEX swap in basis points. Default 50 = 0.5%. */
-    usdcXlmSlippageBps: parseInt(process.env.USDC_XLM_SLIPPAGE_BPS ?? "50", 10),
+    usdcXlmSlippageBps: env.USDC_XLM_SLIPPAGE_BPS,
+  },
+
+  // Bulk Transfer (#441)
+  bulkTransfer: {
+    chunkSize: env.BULK_TRANSFER_CHUNK_SIZE,
+    maxFileSizeBytes: env.BULK_TRANSFER_MAX_FILE_SIZE_BYTES,
+  },
+
+  // Smart Contracts
+  contracts: {
+    oracle: env.CONTRACT_ORACLE || "",
+    reserveTracker: env.CONTRACT_RESERVE_TRACKER || "",
+    minting: env.CONTRACT_MINTING || "",
+    burning: env.CONTRACT_BURNING || "",
+    savingsVault: env.CONTRACT_SAVINGS_VAULT || "",
+    lendingPool: env.CONTRACT_LENDING_POOL || "",
+    escrow: env.CONTRACT_ESCROW || "",
   },
 
   // Bulk transfer CSV upload processing
@@ -487,16 +496,16 @@ export const config = {
 
   // Oracle (40/40/20: central bank, fintech, forex)
   oracle: {
-    updateIntervalHours: parseInt(process.env.ORACLE_UPDATE_INTERVAL_HOURS || "6", 10),
-    emergencyThreshold: parseFloat(process.env.ORACLE_EMERGENCY_THRESHOLD || "0.05"),
-    maxDeviationPerUpdate: parseFloat(process.env.ORACLE_MAX_DEVIATION_PER_UPDATE || "0.05"),
-    circuitBreakerThreshold: parseFloat(process.env.ORACLE_CIRCUIT_BREAKER_THRESHOLD || "0.10"),
+    updateIntervalHours: env.ORACLE_UPDATE_INTERVAL_HOURS,
+    emergencyThreshold: env.ORACLE_EMERGENCY_THRESHOLD,
+    maxDeviationPerUpdate: env.ORACLE_MAX_DEVIATION_PER_UPDATE,
+    circuitBreakerThreshold: env.ORACLE_CIRCUIT_BREAKER_THRESHOLD,
     forex: {
-      baseUrl: process.env.EXCHANGERATE_API_BASE_URL || "https://v6.exchangerate-api.com/v6",
-      apiKey: process.env.EXCHANGERATE_API_KEY || "",
+      baseUrl: env.EXCHANGERATE_API_BASE_URL,
+      apiKey: env.EXCHANGERATE_API_KEY,
     },
     centralBankUrls: ((): Record<string, string> => {
-      const raw = process.env.CURRENCY_CENTRAL_BANK_URLS;
+      const raw = env.CURRENCY_CENTRAL_BANK_URLS;
       if (raw) {
         try {
           return JSON.parse(raw) as Record<string, string>;
@@ -510,104 +519,77 @@ export const config = {
 
   // Reserve
   reserve: {
-    minRatio: parseFloat(process.env.RESERVE_MIN_RATIO || "1.02"),
-    targetRatio: parseFloat(process.env.RESERVE_TARGET_RATIO || "1.05"),
-    alertThreshold: parseFloat(process.env.RESERVE_ALERT_THRESHOLD || "1.02"),
+    minRatio: env.RESERVE_MIN_RATIO,
+    targetRatio: env.RESERVE_TARGET_RATIO,
+    alertThreshold: env.RESERVE_ALERT_THRESHOLD,
     // #627: Percentage drift threshold above which a currency is considered over/underweight
     // and triggers rebalancing instructions. Default 1 (1%). Set via RESERVE_DRIFT_THRESHOLD_PCT.
-    driftThresholdPct: parseFloat(process.env.RESERVE_DRIFT_THRESHOLD_PCT || "1"),
+    driftThresholdPct: env.RESERVE_DRIFT_THRESHOLD_PCT,
   },
 
   // Notifications (email / SMS)
   notification: {
-    emailProvider: (process.env.NOTIFICATION_EMAIL_PROVIDER || "log") as
-      | "sendgrid"
-      | "ses"
-      | "smtp"
-      | "log",
-    emailFrom: process.env.NOTIFICATION_FROM_EMAIL || "noreply@acbu.io",
+    emailProvider: env.NOTIFICATION_EMAIL_PROVIDER,
+    emailFrom: env.NOTIFICATION_FROM_EMAIL,
     smtp: {
-      host: process.env.SMTP_HOST || "",
-      port: parseInt(process.env.SMTP_PORT || "587", 10),
-      secure: process.env.SMTP_SECURE === "true",
-      user: process.env.SMTP_USER || "",
-      pass: process.env.SMTP_PASS || "",
-      maxConnections: parseInt(process.env.SMTP_MAX_CONNECTIONS || "5", 10),
-      maxMessages: parseInt(process.env.SMTP_MAX_MESSAGES || "100", 10),
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_SECURE === "true",
+      user: env.SMTP_USER,
+      pass: env.SMTP_PASS,
+      maxConnections: env.SMTP_MAX_CONNECTIONS,
+      maxMessages: env.SMTP_MAX_MESSAGES,
     },
-    sendgridApiKey: process.env.SENDGRID_API_KEY || "",
-    sesRegion: process.env.AWS_REGION || process.env.AWS_SES_REGION || "us-east-1",
-    sesAccessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-    sesSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
-    smsProvider: (process.env.NOTIFICATION_SMS_PROVIDER || "log") as
-      | "twilio"
-      | "africas_talking"
-      | "log",
-    alertEmail: process.env.NOTIFICATION_ALERT_EMAIL || "",
-    twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || "",
-    twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || "",
-    twilioFromNumber: process.env.TWILIO_FROM_NUMBER || "",
-    africasTalkingApiKey: process.env.AFRICAS_TALKING_API_KEY || "",
-    africasTalkingUsername: process.env.AFRICAS_TALKING_USERNAME || "",
+    sendgridApiKey: env.SENDGRID_API_KEY,
+    sesRegion: env.AWS_REGION || env.AWS_SES_REGION || "us-east-1",
+    sesAccessKeyId: env.AWS_ACCESS_KEY_ID,
+    sesSecretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+    smsProvider: env.NOTIFICATION_SMS_PROVIDER,
+    alertEmail: env.NOTIFICATION_ALERT_EMAIL,
+    twilioAccountSid: env.TWILIO_ACCOUNT_SID,
+    twilioAuthToken: env.TWILIO_AUTH_TOKEN,
+    twilioFromNumber: env.TWILIO_FROM_NUMBER,
+    africasTalkingApiKey: env.AFRICAS_TALKING_API_KEY,
+    africasTalkingUsername: env.AFRICAS_TALKING_USERNAME,
   },
 
   // Outbound webhooks
   webhook: {
-    url: process.env.WEBHOOK_URL || "",
-    secret: process.env.WEBHOOK_SECRET || "",
+    url: env.WEBHOOK_URL,
+    secret: env.WEBHOOK_SECRET,
   },
 
   // Limits
   limits: {
     retail: {
-      depositDailyUsd: parseInt(process.env.LIMIT_RETAIL_DEPOSIT_DAILY_USD || "5000", 10),
-      depositMonthlyUsd: parseInt(process.env.LIMIT_RETAIL_DEPOSIT_MONTHLY_USD || "50000", 10),
-      withdrawalSingleCurrencyDailyUsd: parseInt(
-        process.env.LIMIT_RETAIL_WITHDRAWAL_DAILY_USD || "10000",
-        10,
-      ),
-      withdrawalSingleCurrencyMonthlyUsd: parseInt(
-        process.env.LIMIT_RETAIL_WITHDRAWAL_MONTHLY_USD || "80000",
-        10,
-      ),
+      depositDailyUsd: env.LIMIT_RETAIL_DEPOSIT_DAILY_USD,
+      depositMonthlyUsd: env.LIMIT_RETAIL_DEPOSIT_MONTHLY_USD,
+      withdrawalSingleCurrencyDailyUsd: env.LIMIT_RETAIL_WITHDRAWAL_DAILY_USD,
+      withdrawalSingleCurrencyMonthlyUsd: env.LIMIT_RETAIL_WITHDRAWAL_MONTHLY_USD,
     },
     business: {
-      depositDailyUsd: parseInt(process.env.LIMIT_BUSINESS_DEPOSIT_DAILY_USD || "50000", 10),
-      depositMonthlyUsd: parseInt(process.env.LIMIT_BUSINESS_DEPOSIT_MONTHLY_USD || "500000", 10),
-      withdrawalSingleCurrencyDailyUsd: parseInt(
-        process.env.LIMIT_BUSINESS_WITHDRAWAL_DAILY_USD || "100000",
-        10,
-      ),
-      withdrawalSingleCurrencyMonthlyUsd: parseInt(
-        process.env.LIMIT_BUSINESS_WITHDRAWAL_MONTHLY_USD || "800000",
-        10,
-      ),
+      depositDailyUsd: env.LIMIT_BUSINESS_DEPOSIT_DAILY_USD,
+      depositMonthlyUsd: env.LIMIT_BUSINESS_DEPOSIT_MONTHLY_USD,
+      withdrawalSingleCurrencyDailyUsd: env.LIMIT_BUSINESS_WITHDRAWAL_DAILY_USD,
+      withdrawalSingleCurrencyMonthlyUsd: env.LIMIT_BUSINESS_WITHDRAWAL_MONTHLY_USD,
     },
     government: {
-      depositDailyUsd: parseInt(process.env.LIMIT_GOV_DEPOSIT_DAILY_USD || "500000", 10),
-      depositMonthlyUsd: parseInt(process.env.LIMIT_GOV_DEPOSIT_MONTHLY_USD || "5000000", 10),
-      withdrawalSingleCurrencyDailyUsd: parseInt(
-        process.env.LIMIT_GOV_WITHDRAWAL_DAILY_USD || "500000",
-        10,
-      ),
-      withdrawalSingleCurrencyMonthlyUsd: parseInt(
-        process.env.LIMIT_GOV_WITHDRAWAL_MONTHLY_USD || "4000000",
-        10,
-      ),
+      depositDailyUsd: env.LIMIT_GOV_DEPOSIT_DAILY_USD,
+      depositMonthlyUsd: env.LIMIT_GOV_DEPOSIT_MONTHLY_USD,
+      withdrawalSingleCurrencyDailyUsd: env.LIMIT_GOV_WITHDRAWAL_DAILY_USD,
+      withdrawalSingleCurrencyMonthlyUsd: env.LIMIT_GOV_WITHDRAWAL_MONTHLY_USD,
     },
     circuitBreaker: {
-      reserveWeightThresholdPct: parseFloat(
-        process.env.LIMIT_CIRCUIT_BREAKER_RESERVE_WEIGHT_PCT || "10",
-      ),
-      minReserveRatio: parseFloat(process.env.LIMIT_CIRCUIT_BREAKER_MIN_RATIO || "1.02"),
+      reserveWeightThresholdPct: env.LIMIT_CIRCUIT_BREAKER_RESERVE_WEIGHT_PCT,
+      minReserveRatio: env.LIMIT_CIRCUIT_BREAKER_MIN_RATIO,
     },
   },
 
   // Auth Security
   auth: {
-    bruteMaxAttempts: parseInt(process.env.AUTH_BRUTE_MAX_ATTEMPTS || "5", 10),
-    bruteLockoutMs: parseInt(process.env.AUTH_BRUTE_LOCKOUT_MS || "900000", 10), // 15 mins
-    captchaSecret: process.env.CAPTCHA_SECRET || "",
+    bruteMaxAttempts: env.AUTH_BRUTE_MAX_ATTEMPTS,
+    bruteLockoutMs: env.AUTH_BRUTE_LOCKOUT_MS,
+    captchaSecret: env.CAPTCHA_SECRET,
   },
 
   openai: {
