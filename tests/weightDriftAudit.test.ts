@@ -8,15 +8,57 @@
  * 4. List audits with pagination and filtering
  */
 
-import { weightDriftAuditService } from "../weightDriftAuditService";
-import { basketService } from "../../basket";
-import { reserveTracker } from "../ReserveTracker";
-import { auditService } from "../../audit";
-import { prisma } from "../../../config/database";
+import { weightDriftAuditService } from "../src/services/reserve/WeightDriftAuditService";
+import { basketService } from "../src/services/basket";
+import { reserveTracker } from "../src/services/reserve/ReserveTracker";
+import { auditService } from "../src/services/audit";
+import { prisma } from "../src/config/database";
 
-jest.mock("../../basket");
-jest.mock("../ReserveTracker");
-jest.mock("../../audit");
+jest.mock("../src/services/basket");
+jest.mock("../src/services/reserve/ReserveTracker");
+jest.mock("../src/services/audit");
+
+jest.mock("../src/config/database", () => {
+  type MockModel = { [method: string]: jest.Mock };
+  function createMockModel(): MockModel {
+    return new Proxy({} as MockModel, {
+      get: (t, p) => {
+        if (typeof p === "string") {
+          if (!(p in t)) t[p] = jest.fn();
+          return t[p];
+        }
+        return undefined;
+      },
+    });
+  }
+  const prismaModels: Record<string, MockModel> = {};
+  const mockPrisma = new Proxy(
+    {
+      $transaction: jest.fn(),
+      $connect: jest.fn().mockResolvedValue(undefined),
+      $disconnect: jest.fn().mockResolvedValue(undefined),
+      $use: jest.fn(),
+      $on: jest.fn(),
+      $extends: jest.fn().mockReturnThis(),
+    } as any,
+    {
+      get: (t, p) => {
+        if (p in t) return t[p];
+        if (typeof p === "string" && !p.startsWith("$")) {
+          if (!(p in prismaModels)) prismaModels[p] = createMockModel();
+          return prismaModels[p];
+        }
+        return undefined;
+      },
+    },
+  );
+  return {
+    prisma: mockPrisma,
+    prismaReplica: mockPrisma,
+    connectWithRetry: jest.fn().mockResolvedValue(undefined),
+    default: mockPrisma,
+  };
+});
 
 describe("WeightDriftAuditService", () => {
   beforeEach(() => {
@@ -69,11 +111,11 @@ describe("WeightDriftAuditService", () => {
       expect(report.maxDriftPercent).toBe(2);
       expect(report.entries).toHaveLength(3);
 
-      const usdEntry = report.entries.find((e) => e.currency === "USD");
+      const usdEntry = report.entries.find((e: { currency: string }) => e.currency === "USD");
       expect(usdEntry?.driftPercent).toBe(2);
       expect(usdEntry?.exceedsThreshold).toBe(true);
 
-      const ngnEntry = report.entries.find((e) => e.currency === "NGN");
+      const ngnEntry = report.entries.find((e: { currency: string }) => e.currency === "NGN");
       expect(ngnEntry?.driftPercent).toBe(-2);
       expect(ngnEntry?.exceedsThreshold).toBe(true);
     });
@@ -128,7 +170,7 @@ describe("WeightDriftAuditService", () => {
       };
 
       // Mock prisma transaction
-      (prisma.$transaction as any).mockImplementation(async (fn) => {
+      (prisma.$transaction as any).mockImplementation(async (fn: (tx: any) => Promise<any>) => {
         const mockTx = {
           weightDriftAudit: {
             create: jest.fn().mockResolvedValue({
@@ -172,11 +214,11 @@ describe("WeightDriftAuditService", () => {
         approvalNotes: null,
       };
 
-      (prisma.weightDriftAudit.findUniqueOrThrow as jest.Mock).mockResolvedValue(
+      ((prisma as any).weightDriftAudit.findUniqueOrThrow as jest.Mock).mockResolvedValue(
         mockAudit,
       );
 
-      (prisma.$transaction as any).mockImplementation(async (fn) => {
+      (prisma.$transaction as any).mockImplementation(async (fn: (tx: any) => Promise<any>) => {
         const mockTx = {
           weightDriftAudit: {
             update: jest.fn().mockResolvedValue({
@@ -215,7 +257,7 @@ describe("WeightDriftAuditService", () => {
         currencies: [],
       };
 
-      (prisma.weightDriftAudit.findUniqueOrThrow as jest.Mock).mockResolvedValue(
+      ((prisma as any).weightDriftAudit.findUniqueOrThrow as jest.Mock).mockResolvedValue(
         mockAudit,
       );
 
@@ -241,7 +283,7 @@ describe("WeightDriftAuditService", () => {
         mockAudit,
       );
 
-      (prisma.$transaction as any).mockImplementation(async (fn) => {
+      (prisma.$transaction as any).mockImplementation(async (fn: (tx: any) => Promise<any>) => {
         const mockTx = {
           weightDriftAudit: {
             update: jest.fn().mockResolvedValue({
@@ -289,10 +331,10 @@ describe("WeightDriftAuditService", () => {
         },
       ];
 
-      (prisma.weightDriftAudit.findMany as jest.Mock).mockResolvedValue(
+      ((prisma as any).weightDriftAudit.findMany as jest.Mock).mockResolvedValue(
         mockAudits,
       );
-      (prisma.weightDriftAudit.count as jest.Mock).mockResolvedValue(2);
+      ((prisma as any).weightDriftAudit.count as jest.Mock).mockResolvedValue(2);
 
       const result = await weightDriftAuditService.listAudits(
         undefined,
@@ -314,16 +356,16 @@ describe("WeightDriftAuditService", () => {
         },
       ];
 
-      (prisma.weightDriftAudit.findMany as jest.Mock).mockResolvedValue(
+      ((prisma as any).weightDriftAudit.findMany as jest.Mock).mockResolvedValue(
         mockAudits,
       );
-      (prisma.weightDriftAudit.count as jest.Mock).mockResolvedValue(1);
+      ((prisma as any).weightDriftAudit.count as jest.Mock).mockResolvedValue(1);
 
       const result = await weightDriftAuditService.listAudits("pending", 20, 0);
 
       expect(result.audits).toHaveLength(1);
       expect(result.total).toBe(1);
-      expect(prisma.weightDriftAudit.findMany).toHaveBeenCalledWith(
+      expect((prisma as any).weightDriftAudit.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { status: "pending" },
         }),

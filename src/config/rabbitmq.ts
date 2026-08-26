@@ -1,4 +1,4 @@
-import amqp, { Channel, ChannelModel, ConfirmChannel } from "amqplib";
+import amqp, { ChannelModel, ConfirmChannel } from "amqplib";
 import { config } from "./env";
 import { logger } from "./logger";
 

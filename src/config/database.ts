@@ -20,7 +20,7 @@ function buildPrismaClient(url: string): PrismaClient {
 }
 
 function applyPrismaClientMiddleware(client: PrismaClient): void {
-  client.$use(async (params: Prisma.MiddlewareParams, next: Prisma.MiddlewareFn) => {
+  client.$use(async (params: Prisma.MiddlewareParams, next: any) => {
     const tracer = trace.getTracer("prisma");
     const spanName = `prisma.${params.model ?? "raw"}.${params.action}`;
     return tracer.startActiveSpan(spanName, async (span) => {
@@ -42,7 +42,7 @@ function applyPrismaClientMiddleware(client: PrismaClient): void {
     });
   });
 
-  client.$use(async (params: Prisma.MiddlewareParams, next: Prisma.MiddlewareFn) => {
+  client.$use(async (params: Prisma.MiddlewareParams, next: any) => {
     const end = poolAcquireHistogram.startTimer({
       model: params.model ?? "raw",
       action: params.action,
@@ -54,7 +54,7 @@ function applyPrismaClientMiddleware(client: PrismaClient): void {
     }
   });
 
-  client.$use(async (params: Prisma.MiddlewareParams, next: Prisma.MiddlewareFn) => {
+  client.$use(async (params: Prisma.MiddlewareParams, next: any) => {
     let lastError: unknown;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -122,10 +122,6 @@ if (config.prismaAccelerateUrl && !ACCELERATE_PROTOCOL_RE.test(config.prismaAcce
 // For runtime traffic through Accelerate, keep ACCELERATE_QUERY_TIMEOUT_MS in
 // the Accelerate dashboard ≥ 10 000 ms and ensure your slowest query completes
 // within that window.
-const STATEMENT_TIMEOUT_MS = parseInt(
-  process.env.DB_STATEMENT_TIMEOUT_MS ?? "9000",
-  10,
-);
 
 function appendStatementTimeout(url: string, timeoutMs: number): string {
   try {

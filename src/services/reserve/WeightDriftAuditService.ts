@@ -65,7 +65,7 @@ export class WeightDriftAuditService {
       for (const [currency, policyWeight] of policyWeights) {
         const actualWeight = actualWeights.get(currency) || 0;
         const driftPercent = actualWeight - policyWeight;
-        const exceedsThreshold = Math.abs(driftPercent) > DRIFT_THRESHOLD_PCT;
+        const exceedsThreshold = Math.abs(driftPercent) >= DRIFT_THRESHOLD_PCT;
 
         if (exceedsThreshold) {
           exceedingCount++;
@@ -117,7 +117,7 @@ export class WeightDriftAuditService {
     report: WeightDriftReport,
     createdBy: string,
   ): Promise<WeightDriftReport> {
-    const tx = await prisma.$transaction(async (tx) => {
+    const tx = await prisma.$transaction(async (tx: any) => {
       // Create main audit record
       const auditRecord = await tx.weightDriftAudit.create({
         data: {
@@ -196,7 +196,7 @@ export class WeightDriftAuditService {
       throw new Error(`Cannot approve audit with status: ${audit.status}`);
     }
 
-    const updatedAudit = await prisma.$transaction(async (tx) => {
+    const updatedAudit = await prisma.$transaction(async (tx: any) => {
       const updated = await tx.weightDriftAudit.update({
         where: { id: auditId },
         data: {
@@ -248,7 +248,7 @@ export class WeightDriftAuditService {
       throw new Error(`Cannot reject audit with status: ${audit.status}`);
     }
 
-    const updatedAudit = await prisma.$transaction(async (tx) => {
+    const updatedAudit = await prisma.$transaction(async (tx: any) => {
       const updated = await tx.weightDriftAudit.update({
         where: { id: auditId },
         data: {
@@ -303,7 +303,7 @@ export class WeightDriftAuditService {
     ]);
 
     return {
-      audits: audits.map((a) => this.formatAuditReport(a, a.currencies)),
+      audits: audits.map((a: any) => this.formatAuditReport(a, a.currencies)),
       total,
     };
   }
@@ -324,7 +324,7 @@ export class WeightDriftAuditService {
   private generateRecommendation(
     currency: string,
     policyWeight: number,
-    actualWeight: number,
+    _actualWeight: number,
     driftPercent: number,
   ): string {
     if (Math.abs(driftPercent) <= 0.5) {

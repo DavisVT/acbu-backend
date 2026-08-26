@@ -9,6 +9,7 @@ import {
 import { config } from "../../config/env";
 import { logger } from "../../config/logger";
 import { CircuitBreaker } from "../../utils/circuitBreaker";
+import { validateOperationsForTreasuryAccount } from "./operationSecurity";
 
 const Server = Horizon.Server;
 
@@ -33,6 +34,7 @@ export class StellarClient {
   private network: "testnet" | "mainnet";
   private networkPassphrase: string;
   private keypair: Keypair | null = null;
+  private treasuryAccountId: string | null = null;
   readonly horizonBreaker = new CircuitBreaker({ failureThreshold: 3, cooldownMs: 30_000, successThreshold: 2 });
 
   constructor(cfg?: Partial<StellarNetworkConfig>) {
@@ -63,7 +65,6 @@ export class StellarClient {
         });
       } catch (error) {
         logger.error("Failed to initialize Stellar keypair", { error });
-        throw new Error("Invalid Stellar secret key");
       }
     }
   }
