@@ -22,6 +22,7 @@ import { requestMetricsMiddleware } from "./middleware/metrics";
 import { errorHandler, AppError } from "./middleware/errorHandler";
 import { standardRateLimiter } from "./middleware/rateLimiter";
 import { userAgentFilter } from "./middleware/userAgentFilter";
+import { verifyContentLength } from "./middleware/bodyParser";
 import { swaggerSpec } from "./config/swagger";
 import routes from "./routes";
 import webhookRoutes from "./routes/webhookRoutes";
@@ -225,7 +226,8 @@ app.use(
     inflate: true,
     limit: MAX_REQUEST_BODY_SIZE,
     type: "application/json",
-    verify: (req: express.Request, _res: express.Response, buf: Buffer) => {
+    verify: (req: express.Request, res: express.Response, buf: Buffer, encoding: string) => {
+      verifyContentLength(req, res, buf, encoding);
       (req as unknown as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
     },
   }),
@@ -236,7 +238,8 @@ app.use(
   express.json({
     inflate: true,
     limit: MAX_REQUEST_BODY_SIZE,
-    verify: (req: express.Request, _res: express.Response, buf: Buffer) => {
+    verify: (req: express.Request, res: express.Response, buf: Buffer, encoding: string) => {
+      verifyContentLength(req, res, buf, encoding);
       (req as unknown as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
     },
   }),
@@ -265,6 +268,24 @@ app.use(
         error: {
           code: "UNSUPPORTED_CONTENT_ENCODING",
           message: "Unsupported request body encoding",
+        },
+      });
+      return;
+    }
+    if (err?.type === "content_length.mismatch") {
+      res.status(400).json({
+        error: {
+          code: "CONTENT_LENGTH_MISMATCH",
+          message: err.message,
+        },
+      });
+      return;
+    }
+    if (err?.type === "content_length.invalid") {
+      res.status(400).json({
+        error: {
+          code: "INVALID_CONTENT_LENGTH",
+          message: "Invalid Content-Length header",
         },
       });
       return;
