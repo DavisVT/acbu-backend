@@ -6,14 +6,8 @@ import axios from "axios";
 import { config } from "../../config/env";
 import { logger } from "../../config/logger";
 
-const POSITIVE_TTL_MS = parseInt(
-  process.env.EXCHANGE_RATE_CACHE_TTL_MS || "60000",
-  10,
-);
-const NEGATIVE_TTL_MS = parseInt(
-  process.env.EXCHANGE_RATE_NEGATIVE_CACHE_TTL_MS || "30000",
-  10,
-);
+const POSITIVE_TTL_MS = parseInt(process.env.EXCHANGE_RATE_CACHE_TTL_MS || "60000", 10);
+const NEGATIVE_TTL_MS = parseInt(process.env.EXCHANGE_RATE_NEGATIVE_CACHE_TTL_MS || "30000", 10);
 const REQUEST_TIMEOUT_MS = 10_000;
 
 interface ExchangeRateApiPairResponse {
@@ -98,9 +92,7 @@ async function fetchFromExternalApi(currency: string): Promise<number | null> {
  * Fetch USD rate for 1 unit of the given currency (e.g. 1 NGN = x USD).
  * Successful responses and retryable failures are cached independently.
  */
-export async function fetchExchangeRateUsd(
-  currency: string,
-): Promise<number | null> {
+export async function fetchExchangeRateUsd(currency: string): Promise<number | null> {
   const key = currency.toUpperCase();
 
   const cached = getCachedExchangeRate(key);

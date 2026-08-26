@@ -9,11 +9,12 @@
  * 5. Emit audit logs for all policy changes
  */
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/database";
 import { logger } from "../../config/logger";
 import { basketService } from "../basket";
 import { reserveTracker } from "../reserve/ReserveTracker";
-import { auditService } from "../audit";
+import { logAudit } from "../audit";
 import { Decimal } from "@prisma/client/runtime/library";
 
 const DRIFT_THRESHOLD_PCT = 2; // Trigger audit if drift exceeds 2%
@@ -38,7 +39,25 @@ export interface WeightDriftReport {
   status: "pending" | "approved" | "rejected";
 }
 
+/** WeightDriftAudit row as stored in the database (no relations). */
+type WeightDriftAuditRow = Prisma.WeightDriftAuditGetPayload<{}>;
+/** WeightDriftCurrency row as stored in the database. */
+type WeightDriftCurrencyRow = Prisma.WeightDriftCurrencyGetPayload<{}>;
+/** WeightDriftAudit row including its per-currency snapshot rows. */
+type WeightDriftAuditWithCurrencies = Prisma.WeightDriftAuditGetPayload<{
+  include: { currencies: true };
+}>;
+
 export class WeightDriftAuditService {
+  /**
+   * The extended `prisma` client is typed as a union of the base and Accelerate
+   * extensions, which makes model delegates with `include` uncallable. The plain
+   * transaction-client type exposes clean, callable delegates for direct reads.
+   */
+  private get prismaTx(): Prisma.TransactionClient {
+    return prisma as unknown as Prisma.TransactionClient;
+  }
+
   /**
    * Calculate drift for each currency: actual vs policy weight.
    * Returns audit-ready report.
@@ -47,9 +66,7 @@ export class WeightDriftAuditService {
     try {
       // Get policy (target) weights from active basket config
       const policyBasket = await basketService.getCurrentBasket();
-      const policyWeights = new Map(
-        policyBasket.map((e) => [e.currency, e.weight]),
-      );
+      const policyWeights = new Map(policyBasket.map((e) => [e.currency, e.weight]));
 
       // Get actual weights from on-chain/fintech reserves
       const reserveHealth = await reserveTracker.getReserveStatus();
@@ -73,12 +90,7 @@ export class WeightDriftAuditService {
 
         maxDrift = Math.max(maxDrift, Math.abs(driftPercent));
 
-        const recommendation = this.generateRecommendation(
-          currency,
-          policyWeight,
-          actualWeight,
-          driftPercent,
-        );
+        const recommendation = this.generateRecommendation(currency, policyWeight, driftPercent);
 
         entries.push({
           currency,
@@ -113,11 +125,8 @@ export class WeightDriftAuditService {
   /**
    * Store audit report in DB with pending status.
    */
-  async createAudit(
-    report: WeightDriftReport,
-    createdBy: string,
-  ): Promise<WeightDriftReport> {
-    const tx = await prisma.$transaction(async (tx: any) => {
+  async createAudit(report: WeightDriftReport, createdBy: string): Promise<WeightDriftReport> {
+    const tx = await prisma.$transaction(async (tx) => {
       // Create main audit record
       const auditRecord = await tx.weightDriftAudit.create({
         data: {
@@ -127,7 +136,7 @@ export class WeightDriftAuditService {
           currenciesExceedingThreshold: report.currenciesExceedingThreshold,
           maxDriftPercent: new Decimal(report.maxDriftPercent),
           status: "pending",
-          diffReport: report,
+          diffReport: report as unknown as Prisma.InputJsonValue,
           createdBy,
         },
       });
@@ -148,7 +157,7 @@ export class WeightDriftAuditService {
       }
 
       // Emit audit log for audit creation
-      await auditService.logAuditEntry({
+      await logAudit({
         eventType: "WEIGHT_DRIFT_AUDIT_CREATED",
         entityType: "WeightDriftAudit",
         entityId: auditRecord.id,
@@ -156,8 +165,7 @@ export class WeightDriftAuditService {
         performedBy: createdBy,
         newValue: {
           status: "pending",
-          currenciesExceedingThreshold:
-            report.currenciesExceedingThreshold,
+          currenciesExceedingThreshold: report.currenciesExceedingThreshold,
           maxDriftPercent: report.maxDriftPercent,
         },
       });
@@ -187,7 +195,7 @@ export class WeightDriftAuditService {
     approvedBy: string,
     approvalNotes?: string,
   ): Promise<WeightDriftReport> {
-    const audit = await prisma.weightDriftAudit.findUniqueOrThrow({
+    const audit = await this.prismaTx.weightDriftAudit.findUniqueOrThrow({
       where: { id: auditId },
       include: { currencies: true },
     });
@@ -208,7 +216,7 @@ export class WeightDriftAuditService {
       });
 
       // Emit audit log for approval
-      await auditService.logAuditEntry({
+      await logAudit({
         eventType: "WEIGHT_DRIFT_AUDIT_APPROVED",
         entityType: "WeightDriftAudit",
         entityId: auditId,
@@ -239,7 +247,7 @@ export class WeightDriftAuditService {
     rejectedBy: string,
     reason: string,
   ): Promise<WeightDriftReport> {
-    const audit = await prisma.weightDriftAudit.findUniqueOrThrow({
+    const audit = await this.prismaTx.weightDriftAudit.findUniqueOrThrow({
       where: { id: auditId },
       include: { currencies: true },
     });
@@ -248,7 +256,7 @@ export class WeightDriftAuditService {
       throw new Error(`Cannot reject audit with status: ${audit.status}`);
     }
 
-    const updatedAudit = await prisma.$transaction(async (tx: any) => {
+    const updatedAudit = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updated = await tx.weightDriftAudit.update({
         where: { id: auditId },
         data: {
@@ -258,7 +266,7 @@ export class WeightDriftAuditService {
       });
 
       // Emit audit log for rejection
-      await auditService.logAuditEntry({
+      await logAudit({
         eventType: "WEIGHT_DRIFT_AUDIT_REJECTED",
         entityType: "WeightDriftAudit",
         entityId: auditId,
@@ -292,14 +300,14 @@ export class WeightDriftAuditService {
     const where = status ? { status } : {};
 
     const [audits, total] = await Promise.all([
-      prisma.weightDriftAudit.findMany({
+      this.prismaTx.weightDriftAudit.findMany({
         where,
         include: { currencies: true },
         orderBy: { createdAt: "desc" },
         take: limit,
         skip: offset,
       }),
-      prisma.weightDriftAudit.count({ where }),
+      this.prismaTx.weightDriftAudit.count({ where }),
     ]);
 
     return {
@@ -312,7 +320,7 @@ export class WeightDriftAuditService {
    * Get single audit with full details.
    */
   async getAudit(auditId: string): Promise<WeightDriftReport> {
-    const audit = await prisma.weightDriftAudit.findUniqueOrThrow({
+    const audit = await this.prismaTx.weightDriftAudit.findUniqueOrThrow({
       where: { id: auditId },
       include: { currencies: true },
     });
@@ -324,7 +332,6 @@ export class WeightDriftAuditService {
   private generateRecommendation(
     currency: string,
     policyWeight: number,
-    _actualWeight: number,
     driftPercent: number,
   ): string {
     if (Math.abs(driftPercent) <= 0.5) {
@@ -339,10 +346,7 @@ export class WeightDriftAuditService {
   }
 
   // Helper: Format audit record for API response
-  private formatAuditReport(
-    audit: any,
-    currencies: any[],
-  ): WeightDriftReport {
+  private formatAuditReport(audit: any, currencies: any[]): WeightDriftReport {
     return {
       auditId: audit.id,
       auditPeriodStart: audit.auditPeriodStart,
@@ -358,7 +362,7 @@ export class WeightDriftAuditService {
         exceedsThreshold: c.exceedsThreshold,
         recommendation: c.recommendation || "",
       })),
-      status: audit.status,
+      status: audit.status as WeightDriftReport["status"],
     };
   }
 }

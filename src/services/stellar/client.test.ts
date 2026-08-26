@@ -41,7 +41,10 @@ import { StellarClient } from "./client";
 import { logger } from "../../config/logger";
 import { config } from "../../config/env";
 
-const VALID_SECRET = "SCZANGBA5YHTNYVVVVCG2XTIBQ4SKWDJXG3G5C2JKKQLOOOQ2K3X7LKP";
+// Prefer an injected secret so CI/CD can supply a non-committed value.
+// The fallback keeps existing test behaviour when the env var is absent (#611).
+const VALID_SECRET =
+  process.env.TEST_STELLAR_SECRET_KEY ?? "SCZANGBA5YHTNYVVVVCG2XTIBQ4SKWDJXG3G5C2JKKQLOOOQ2K3X7LKP";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -64,12 +67,20 @@ describe("StellarClient", () => {
     it("throws 'Invalid Stellar secret key' when secret key has wrong format (hex instead of base32)", () => {
       const hexKey = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6";
       expect(() => new StellarClient({ secretKey: hexKey })).toThrow("Invalid Stellar secret key");
-      expect(logger.error).toHaveBeenCalledWith("Failed to initialize Stellar keypair", expect.any(Object));
+      expect(logger.error).toHaveBeenCalledWith(
+        "Failed to initialize Stellar keypair",
+        expect.any(Object),
+      );
     });
 
     it("throws 'Invalid Stellar secret key' when secret key has wrong length", () => {
-      expect(() => new StellarClient({ secretKey: "too-short" })).toThrow("Invalid Stellar secret key");
-      expect(logger.error).toHaveBeenCalledWith("Failed to initialize Stellar keypair", expect.any(Object));
+      expect(() => new StellarClient({ secretKey: "too-short" })).toThrow(
+        "Invalid Stellar secret key",
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        "Failed to initialize Stellar keypair",
+        expect.any(Object),
+      );
     });
 
     it("does not initialize keypair when secret key is empty", () => {

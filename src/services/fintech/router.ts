@@ -6,7 +6,6 @@
 
 import type { FintechProvider, FintechProviderId } from "./types";
 
-
 /**
  * Default currency → provider id array (priority order). Overridable via config.
  * Example: NGN: ["paystack", "flutterwave"]
@@ -42,7 +41,10 @@ export class FintechProviderRouter {
    * @param currency
    * @param opts Optionally pass {simulateOutageFor?: FintechProviderId}
    */
-  async getProvider(currency: string, opts?: { simulateOutageFor?: FintechProviderId }): Promise<FintechProvider> {
+  async getProvider(
+    currency: string,
+    opts?: { simulateOutageFor?: FintechProviderId },
+  ): Promise<FintechProvider> {
     const providerIds = this.currencyProviders[currency] ?? ["flutterwave"];
     let lastError: Error | null = null;
     for (const id of providerIds) {
@@ -68,7 +70,8 @@ export class FintechProviderRouter {
       if (fallback) return fallback;
     }
     throw new Error(
-      `No healthy fintech provider for currency ${currency}` + (lastError ? ": " + lastError.message : "")
+      `No healthy fintech provider for currency ${currency}` +
+        (lastError ? ": " + lastError.message : ""),
     );
   }
 

@@ -3,11 +3,12 @@ import fs from "fs";
 import path from "path";
 import { logger } from "../config/logger";
 import { heapUsedRatioGauge, heapDumpCounter } from "../config/promMetrics";
+import { config } from "../config/env";
 
-const WARN_THRESHOLD_PCT = parseInt(process.env.MEMORY_LEAK_THRESHOLD_PCT || "85", 10);
+const WARN_THRESHOLD_PCT = config.memory.leakThresholdPct;
 const CRITICAL_THRESHOLD_PCT = Math.min(WARN_THRESHOLD_PCT + 10, 98);
-const CHECK_INTERVAL_MS = parseInt(process.env.MEMORY_CHECK_INTERVAL_MS || "30000", 10);
-const HEAP_DUMP_DIR = process.env.HEAP_DUMP_DIR || "./heapdumps";
+const CHECK_INTERVAL_MS = config.memory.checkIntervalMs;
+const HEAP_DUMP_DIR = config.memory.heapDumpDir;
 
 let lastDumpAt = 0;
 const MIN_DUMP_INTERVAL_MS = 5 * 60 * 1000;
@@ -51,8 +52,7 @@ function checkHeap(): void {
 
   if (usedPct >= CRITICAL_THRESHOLD_PCT) {
     const now = Date.now();
-    const dumpPath =
-      now - lastDumpAt > MIN_DUMP_INTERVAL_MS ? writeHeapSnapshot() : null;
+    const dumpPath = now - lastDumpAt > MIN_DUMP_INTERVAL_MS ? writeHeapSnapshot() : null;
     if (dumpPath) lastDumpAt = now;
 
     logger.error("CRITICAL: heap usage above threshold — possible memory leak", {

@@ -26,9 +26,7 @@ export function isReadonlyError(error: unknown): boolean {
  * During Sentinel failover a promoted replica can briefly return READONLY.
  * Reconnect and resend the failed command so writes recover automatically.
  */
-export function createReconnectOnError(): NonNullable<
-  RedisOptions["reconnectOnError"]
-> {
+export function createReconnectOnError(): NonNullable<RedisOptions["reconnectOnError"]> {
   return (error: Error) => {
     if (isReadonlyError(error)) {
       failoverMetrics.reconnects += 1;
@@ -84,9 +82,7 @@ export class RedisService {
   getClient(): Redis {
     if (!this.client) {
       const options = buildRedisOptions();
-      this.client = config.redis.url
-        ? new Redis(config.redis.url, options)
-        : new Redis(options);
+      this.client = config.redis.url ? new Redis(config.redis.url, options) : new Redis(options);
       this.client.on("reconnecting", () => {
         failoverMetrics.reconnects += 1;
         logger.info("Redis client reconnecting after failover");
@@ -146,11 +142,7 @@ export class RedisService {
     });
   }
 
-  async set(
-    key: string,
-    value: string,
-    ttlSeconds?: number,
-  ): Promise<"OK" | null> {
+  async set(key: string, value: string, ttlSeconds?: number): Promise<"OK" | null> {
     return this.executeWithReadonlyRetry(async () => {
       if (ttlSeconds) {
         return this.getClient().set(key, value, "EX", ttlSeconds);

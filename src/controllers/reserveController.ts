@@ -4,10 +4,7 @@ import { ReserveTrackerService } from "../services/contracts/acbuReserveTracker.
 import { OracleService } from "../services/contracts/acbuOracle.service";
 import { BASKET_CURRENCIES } from "../config/basket";
 import { reserveTracker } from "../services/reserve/ReserveTracker";
-import {
-  contractClient,
-  ContractClient,
-} from "../services/stellar/contractClient";
+import { contractClient, ContractClient } from "../services/stellar/contractClient";
 import { config } from "../config/env";
 
 const DRIFT_THRESHOLD_BPS_WARN_ONLY = 100; // 1.00%
@@ -58,12 +55,11 @@ export const getReserveStatus = async (
     const minRatio = config.reserve.minRatio;
     const targetRatio = config.reserve.targetRatio;
 
-    const [totalReserveValueUsdStr, acbuUsdRateStr, allReserves] =
-      await Promise.all([
-        reserveSvc.getTotalReserveValue(),
-        oracleSvc.getAcbuUsdRate(),
-        reserveSvc.getAllReserves(),
-      ]);
+    const [totalReserveValueUsdStr, acbuUsdRateStr, allReserves] = await Promise.all([
+      reserveSvc.getTotalReserveValue(),
+      oracleSvc.getAcbuUsdRate(),
+      reserveSvc.getAllReserves(),
+    ]);
 
     const totalSupplyRes = await contractClient.readContract(
       addresses.minting,
@@ -76,9 +72,7 @@ export const getReserveStatus = async (
     const totalSupply = BigInt(totalAcbuSupply || "0");
 
     const effectiveRatio =
-      totalSupply > 0n
-        ? Number(totalReserveValueUsd) / Number(totalSupply)
-        : null;
+      totalSupply > 0n ? Number(totalReserveValueUsd) / Number(totalSupply) : null;
 
     const currencies = await Promise.all(
       BASKET_CURRENCIES.map(async (currency) => {
@@ -92,18 +86,14 @@ export const getReserveStatus = async (
 
         const valueUsd = BigInt(reserve.valueUsd || "0");
         const actualWeightBps =
-          totalReserveValueUsd > 0n
-            ? Number((valueUsd * 10_000n) / totalReserveValueUsd)
-            : 0;
+          totalReserveValueUsd > 0n ? Number((valueUsd * 10_000n) / totalReserveValueUsd) : 0;
 
         const targetWeightBpsRes = await contractClient.readContract(
           addresses.oracle,
           "get_basket_weight",
           [ContractClient.toScVal([[currency]])],
         );
-        const targetWeightBps = Number(
-          ContractClient.fromScVal(targetWeightBpsRes),
-        );
+        const targetWeightBps = Number(ContractClient.fromScVal(targetWeightBpsRes));
 
         const driftBps = actualWeightBps - targetWeightBps;
         const driftWarning = Math.abs(driftBps) > DRIFT_THRESHOLD_BPS_WARN_ONLY;

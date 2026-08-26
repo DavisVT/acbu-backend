@@ -6,15 +6,15 @@ services:
     container_name: acbu-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-acbu}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-acbu_password}
-      POSTGRES_DB: ${POSTGRES_DB:-acbu_db}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U acbu"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?POSTGRES_USER is required}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -24,9 +24,9 @@ services:
     container_name: acbu-mongodb
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-acbu}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-acbu_password}
-      MONGO_INITDB_DATABASE: ${MONGO_DB:-acbu_cache}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:?MONGO_USER is required}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:?MONGO_DB is required}
     ports:
       - "27017:27017"
     volumes:
@@ -42,8 +42,8 @@ services:
     container_name: acbu-rabbitmq
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-acbu}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-acbu_password}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
     ports:
       - "5672:5672"   # AMQP port
       - "15672:15672" # Management UI

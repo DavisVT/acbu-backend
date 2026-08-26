@@ -29,8 +29,7 @@ import type { FinancialEventStatus } from "../types/logging";
 // Never set this variable in production — the boot guard in env.ts will
 // reject a missing secret before this code is even reached.
 const isDev = config.nodeEnv !== "production";
-const bypassEnabled =
-  isDev && process.env.WEBHOOK_SIGNATURE_BYPASS === "true";
+const bypassEnabled = isDev && process.env.WEBHOOK_SIGNATURE_BYPASS === "true";
 
 // Maximum allowed clock drift in seconds between the webhook timestamp and server time.
 // Rejects replayed webhooks that fall outside this window. Default: 300 s (±5 min).
@@ -88,16 +87,12 @@ export function verifyFlutterwaveSignature(
       503,
       ErrorCodes.CONFIG_ERROR,
     );
-
   }
 
   const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
   if (!rawBody || !Buffer.isBuffer(rawBody)) {
-    throw new AppError(
-      "Raw body required for verification",
-      400,
-      ErrorCodes.RAW_BODY_REQUIRED,
-    );
+    res.status(400).json({ error: "Raw body required for verification" });
+    return;
   }
 
   // #390: Reject requests whose timestamp falls outside the tolerance window.
@@ -114,17 +109,11 @@ export function verifyFlutterwaveSignature(
 
   const received = req.headers["verif-hash"] as string | undefined;
   if (!received) {
-    throw new AppError(
-      "Missing verif-hash header",
-      401,
-      ErrorCodes.MISSING_SIGNATURE,
-    );
+    res.status(401).json({ error: "Missing verif-hash header" });
+    return;
   }
 
-  const computed = crypto
-    .createHmac("sha256", secret)
-    .update(rawBody)
-    .digest("hex");
+  const computed = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
 
   // Normalise to equal-length buffers before timingSafeEqual to prevent
   // length-leaking side channels. A mismatched length still fails below.
@@ -145,7 +134,8 @@ export function verifyFlutterwaveSignature(
     return;
   }
   logger.warn("Flutterwave webhook signature mismatch");
-  throw new AppError("Invalid signature", 401, ErrorCodes.INVALID_SIGNATURE);
+  res.status(401).json({ error: "Invalid signature" });
+  return;
 }
 
 // ── Paystack Webhook ────────────────────────────────────────────────────────
@@ -179,16 +169,12 @@ export function verifyPaystackSignature(
       503,
       ErrorCodes.CONFIG_ERROR,
     );
-
   }
 
   const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
   if (!rawBody || !Buffer.isBuffer(rawBody)) {
-    throw new AppError(
-      "Raw body required for verification",
-      400,
-      ErrorCodes.RAW_BODY_REQUIRED,
-    );
+    res.status(400).json({ error: "Raw body required for verification" });
+    return;
   }
 
   // #390: Reject requests whose timestamp falls outside the tolerance window.
@@ -205,17 +191,11 @@ export function verifyPaystackSignature(
 
   const received = req.headers["x-paystack-signature"] as string | undefined;
   if (!received) {
-    throw new AppError(
-      "Missing x-paystack-signature header",
-      401,
-      ErrorCodes.MISSING_SIGNATURE,
-    );
+    res.status(401).json({ error: "Missing x-paystack-signature header" });
+    return;
   }
 
-  const computed = crypto
-    .createHmac("sha512", secret)
-    .update(rawBody)
-    .digest("hex");
+  const computed = crypto.createHmac("sha512", secret).update(rawBody).digest("hex");
 
   // Use timing-safe comparison (same pattern as Flutterwave above) to prevent
   // timing side-channel attacks. Paystack previously used string equality (===).
@@ -233,7 +213,8 @@ export function verifyPaystackSignature(
 
   if (!signatureValid) {
     logger.warn("Paystack webhook signature mismatch");
-    throw new AppError("Invalid signature", 401, ErrorCodes.INVALID_SIGNATURE);
+    res.status(401).json({ error: "Invalid signature" });
+    return;
   }
   next();
 }
@@ -275,8 +256,7 @@ export async function handlePaystackWebhook(
     const paystackFinancialStatus: FinancialEventStatus =
       paystackStatusMap[data.status ?? ""] ?? "pending";
     const paystackCorrelationId =
-      (req.headers["x-request-id"] as string | undefined) ??
-      crypto.randomUUID();
+      (req.headers["x-request-id"] as string | undefined) ?? crypto.randomUUID();
 
     logFinancialEvent({
       event: "webhook.received",
@@ -353,11 +333,9 @@ export async function handleFlutterwaveWebhook(
       failed: "failed",
       reversed: "reversed",
     };
-    const flwFinancialStatus: FinancialEventStatus =
-      flwStatusMap[data.status ?? ""] ?? "pending";
+    const flwFinancialStatus: FinancialEventStatus = flwStatusMap[data.status ?? ""] ?? "pending";
     const flwCorrelationId =
-      (req.headers["x-request-id"] as string | undefined) ??
-      crypto.randomUUID();
+      (req.headers["x-request-id"] as string | undefined) ?? crypto.randomUUID();
 
     logFinancialEvent({
       event: "webhook.received",
@@ -433,11 +411,7 @@ export function verifyBillsWebhookSignature(
 
   const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
   if (!rawBody || !Buffer.isBuffer(rawBody)) {
-    throw new AppError(
-      "Raw body required for verification",
-      400,
-      ErrorCodes.RAW_BODY_REQUIRED,
-    );
+    throw new AppError("Raw body required for verification", 400, ErrorCodes.RAW_BODY_REQUIRED);
   }
 
   const timestamp = req.headers["x-bills-timestamp"] as string | undefined;
@@ -452,11 +426,7 @@ export function verifyBillsWebhookSignature(
 
   const received = req.headers["x-bills-signature"] as string | undefined;
   if (!received) {
-    throw new AppError(
-      "Missing x-bills-signature header",
-      401,
-      ErrorCodes.MISSING_SIGNATURE,
-    );
+    throw new AppError("Missing x-bills-signature header", 401, ErrorCodes.MISSING_SIGNATURE);
   }
 
   const computed = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
@@ -510,9 +480,7 @@ export async function handleBillsWebhook(
     }
 
     const body = (req.body || {}) as Record<string, unknown>;
-    const transactionId = String(
-      body.transaction_id ?? body.transactionId ?? "",
-    ).trim();
+    const transactionId = String(body.transaction_id ?? body.transactionId ?? "").trim();
     const providerReference = String(
       body.provider_reference ?? body.providerReference ?? "",
     ).trim();
@@ -523,8 +491,7 @@ export async function handleBillsWebhook(
     const currency = String(body.currency ?? "NGN")
       .trim()
       .toUpperCase();
-    const reason =
-      body.reason == null ? undefined : String(body.reason).trim() || undefined;
+    const reason = body.reason == null ? undefined : String(body.reason).trim() || undefined;
 
     if (!transactionId) {
       throw new AppError("transaction_id is required", 400);
@@ -533,10 +500,7 @@ export async function handleBillsWebhook(
       throw new AppError("provider_reference is required", 400);
     }
     if (!["completed", "failed", "refunded"].includes(status)) {
-      throw new AppError(
-        "status must be one of completed, failed, refunded",
-        400,
-      );
+      throw new AppError("status must be one of completed, failed, refunded", 400);
     }
     if (!Number.isFinite(amount) || amount < 0) {
       throw new AppError("amount must be a non-negative number", 400);

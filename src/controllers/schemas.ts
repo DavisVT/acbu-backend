@@ -6,61 +6,38 @@
 
 import { z, ZodSchema } from "zod";
 
+// Privacy Validation Schema
+import { consentPreferenceSchema } from "../validation/schemas";
+
 // Auth Controller
-import {
-  signinSchema,
-  signupSchema,
-  verify2faSchema,
-} from "./authController";
+import { signinSchema, signupSchema, verify2faSchema } from "./authController";
 
 // Transfer Controller
-import {
-  createTransferSchema,
-  getTransfersQuerySchema,
-} from "./transferController";
+import { createTransferSchema, getTransfersQuerySchema } from "./transferController";
 
 // Transaction Controller
-import {
-  listTransactionsQuerySchema,
-} from "./transactionController";
+import { listTransactionsQuerySchema } from "./transactionController";
 
 // User Controller
-import {
-  patchMeSchema,
-  addContactSchema,
-  addGuardianSchema,
-} from "./userController";
+import { patchMeSchema, addContactSchema, addGuardianSchema } from "./userController";
 
 // Wallet Controller
 import { walletConfirmSchema } from "./walletController";
 
 // Fiat Controller
-import {
-  faucetSchema,
-  onRampSchema,
-  offRampSchema,
-} from "./fiatController";
+import { faucetSchema, onRampSchema, offRampSchema } from "./fiatController";
 
 // Mint Controller
-import {
-  usdcBodySchema,
-  depositBodySchema,
-} from "./mintController";
+import { usdcBodySchema, depositBodySchema } from "./mintController";
 
 // Burn Controller
 import { bodySchema as burnBodySchema } from "./burnController";
 
 // Recovery Controller
-import {
-  unlockAppSchema,
-  verifyRecoveryOtpSchema,
-} from "./recoveryController";
+import { unlockAppSchema, verifyRecoveryOtpSchema } from "./recoveryController";
 
 // Salary Controller
-import {
-  postSalaryDisburseSchema,
-  postSalaryScheduleSchema,
-} from "./salaryController";
+import { postSalaryDisburseSchema, postSalaryScheduleSchema } from "./salaryController";
 
 // Investment Controller
 import {
@@ -125,6 +102,9 @@ export const routeSchemas: Record<string, ZodSchema> = {
 
   // Onramp endpoints
   "POST /v1/onramp/register": onrampBodySchema,
+
+  // Privacy endpoints
+  "PUT /v1/privacy/consent": consentPreferenceSchema,
 };
 
 /**

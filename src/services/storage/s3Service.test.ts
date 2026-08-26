@@ -19,11 +19,7 @@ import {
 
 describe("buildObjectKey", () => {
   it("produces the expected kyc/{userId}/{kind}/{docId} pattern", () => {
-    const key = buildObjectKey(
-      "abc123",
-      "passport",
-      "doc-456",
-    );
+    const key = buildObjectKey("abc123", "passport", "doc-456");
     expect(key).toBe("kyc/abc123/passport/doc-456");
   });
 
@@ -51,27 +47,23 @@ describe("buildObjectKey", () => {
 
 describe("assertKeyOwnership", () => {
   it("passes when the key belongs to the requesting user", () => {
-    expect(() =>
-      assertKeyOwnership("kyc/user-abc/passport/doc-1", "user-abc"),
-    ).not.toThrow();
+    expect(() => assertKeyOwnership("kyc/user-abc/passport/doc-1", "user-abc")).not.toThrow();
   });
 
   it("throws when the key belongs to a different user (IDOR)", () => {
-    expect(() =>
-      assertKeyOwnership("kyc/user-abc/passport/doc-1", "user-xyz"),
-    ).toThrow("Access denied");
+    expect(() => assertKeyOwnership("kyc/user-abc/passport/doc-1", "user-xyz")).toThrow(
+      "Access denied",
+    );
   });
 
   it("throws for a key that does not start with kyc/", () => {
-    expect(() =>
-      assertKeyOwnership("other/user-abc/passport/doc-1", "user-abc"),
-    ).toThrow("Access denied");
+    expect(() => assertKeyOwnership("other/user-abc/passport/doc-1", "user-abc")).toThrow(
+      "Access denied",
+    );
   });
 
   it("throws for a key with too few segments", () => {
-    expect(() =>
-      assertKeyOwnership("kyc/user-abc", "user-abc"),
-    ).toThrow("Access denied");
+    expect(() => assertKeyOwnership("kyc/user-abc", "user-abc")).toThrow("Access denied");
   });
 
   it("throws for an empty key", () => {

@@ -38,9 +38,7 @@ export class StellarClient {
   readonly horizonBreaker = new CircuitBreaker({ failureThreshold: 3, cooldownMs: 30_000, successThreshold: 2 });
 
   constructor(cfg?: Partial<StellarNetworkConfig>) {
-    const network = (cfg?.network ?? config.stellar.network) as
-      | "testnet"
-      | "mainnet";
+    const network = (cfg?.network ?? config.stellar.network) as "testnet" | "mainnet";
     const horizonUrl = cfg?.horizonUrl ?? config.stellar.horizonUrl;
     const networkPassphrase =
       cfg?.networkPassphrase ??
@@ -128,13 +126,10 @@ export class StellarClient {
           });
           throw error;
         }
-        logger.warn(
-          `Failed to load account (attempt ${i + 1}/${retries}). Retrying...`,
-          {
-            accountId,
-            error: error.message,
-          },
-        );
+        logger.warn(`Failed to load account (attempt ${i + 1}/${retries}). Retrying...`, {
+          accountId,
+          error: error.message,
+        });
         await new Promise((resolve) => setTimeout(resolve, 2000 * (i + 1)));
       }
     }
@@ -155,11 +150,7 @@ export class StellarClient {
     try {
       // Validate operations for treasury account security
       if (this.treasuryAccountId) {
-        validateOperationsForTreasuryAccount(
-          operations,
-          sourceAccountId,
-          this.treasuryAccountId,
-        );
+        validateOperationsForTreasuryAccount(operations, sourceAccountId, this.treasuryAccountId);
       }
 
       const sourceAccount = await this.getAccount(sourceAccountId);
@@ -188,9 +179,7 @@ export class StellarClient {
       });
 
       operations.forEach((op) =>
-        builder.addOperation(
-          op as unknown as Parameters<typeof builder.addOperation>[0],
-        ),
+        builder.addOperation(op as unknown as Parameters<typeof builder.addOperation>[0]),
       );
 
       const transaction = builder.build();
@@ -249,8 +238,7 @@ export class StellarClient {
       throw new Error("Fee bump source keypair is required");
     }
 
-    const baseFee =
-      options?.baseFee ?? String(Math.max(config.stellar.baseFeeStroops * 10, 1000));
+    const baseFee = options?.baseFee ?? String(Math.max(config.stellar.baseFeeStroops * 10, 1000));
 
     const feeBumpTransaction = TransactionBuilder.buildFeeBumpTransaction(
       feeSourceKeypair,
@@ -266,14 +254,8 @@ export class StellarClient {
   /**
    * Build, sign, and submit a fee-bump transaction for a signed inner transaction.
    */
-  async submitFeeBumpTransaction(
-    innerTransaction: Transaction,
-    options?: FeeBumpOptions,
-  ) {
-    const feeBumpTransaction = this.buildFeeBumpTransaction(
-      innerTransaction,
-      options,
-    );
+  async submitFeeBumpTransaction(innerTransaction: Transaction, options?: FeeBumpOptions) {
+    const feeBumpTransaction = this.buildFeeBumpTransaction(innerTransaction, options);
 
     return this.submitTransaction(feeBumpTransaction);
   }
@@ -281,14 +263,8 @@ export class StellarClient {
   /**
    * Build, sign, and submit a fee-bump transaction from an inner transaction XDR.
    */
-  async submitFeeBumpTransactionXdr(
-    innerTransactionXdr: string,
-    options?: FeeBumpOptions,
-  ) {
-    const innerTransaction = new Transaction(
-      innerTransactionXdr,
-      this.networkPassphrase,
-    );
+  async submitFeeBumpTransactionXdr(innerTransactionXdr: string, options?: FeeBumpOptions) {
+    const innerTransaction = new Transaction(innerTransactionXdr, this.networkPassphrase);
 
     return this.submitFeeBumpTransaction(innerTransaction, options);
   }
@@ -309,11 +285,7 @@ export class StellarClient {
 
     while (attempt < maxAttempts) {
       try {
-        const transaction = await this.buildTransaction(
-          sourceAccountId,
-          operations,
-          options,
-        );
+        const transaction = await this.buildTransaction(sourceAccountId, operations, options);
         const result = await this.submitTransaction(transaction);
         logger.info("Transaction submitted", {
           hash: result.hash,
@@ -326,8 +298,7 @@ export class StellarClient {
 
         // Check if this is a tx_bad_seq error
         const isBadSeqError =
-          error.response?.data?.extras?.result_codes?.operations?.[0] ===
-            "tx_bad_seq" ||
+          error.response?.data?.extras?.result_codes?.operations?.[0] === "tx_bad_seq" ||
           error.message?.includes("tx_bad_seq");
 
         if (isBadSeqError && attempt < maxAttempts) {
@@ -363,10 +334,7 @@ export class StellarClient {
    */
   async getTransaction(transactionHash: string) {
     try {
-      const transaction = await this.server
-        .transactions()
-        .transaction(transactionHash)
-        .call();
+      const transaction = await this.server.transactions().transaction(transactionHash).call();
       return transaction;
     } catch (error) {
       logger.error("Failed to get transaction", { transactionHash, error });
@@ -377,17 +345,11 @@ export class StellarClient {
   /**
    * Get account balance for an asset
    */
-  async getBalance(
-    accountId: string,
-    assetCode?: string,
-    assetIssuer?: string,
-  ) {
+  async getBalance(accountId: string, assetCode?: string, assetIssuer?: string) {
     try {
       const account = await this.getAccount(accountId);
       if (!assetCode || assetCode === "XLM") {
-        const xlmBalance = account.balances.find(
-          (b) => b.asset_type === "native",
-        );
+        const xlmBalance = account.balances.find((b) => b.asset_type === "native");
         return xlmBalance ? parseFloat(xlmBalance.balance) : 0;
       }
 

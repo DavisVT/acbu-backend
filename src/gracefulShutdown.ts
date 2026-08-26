@@ -2,6 +2,7 @@ import { type Server } from "http";
 import { logger } from "./config/logger";
 import { disconnectMongoDB } from "./config/mongodb";
 import { disconnectRabbitMQ } from "./config/rabbitmq";
+import { prisma } from "./config/database";
 import { stopMemoryMonitor } from "./utils/memoryMonitor";
 
 type AppServer = Server & { closeIdleConnections?: () => void };
@@ -48,6 +49,11 @@ export const shutdown = async (): Promise<void> => {
   await closeServer();
   await disconnectMongoDB();
   await disconnectRabbitMQ();
+  // Disconnect Prisma so all in-flight queries drain and the connection pool
+  // is released cleanly on SIGTERM (#720).
+  await prisma.$disconnect().catch((err: unknown) => {
+    logger.warn("[shutdown] Prisma disconnect failed", { error: err });
+  });
 };
 
 let isShuttingDown = false;

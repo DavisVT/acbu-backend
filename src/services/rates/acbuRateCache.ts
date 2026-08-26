@@ -1,5 +1,9 @@
-import { prisma } from "../../config/database";
+import { prisma as _prisma } from "../../config/database";
+import { PrismaClient } from "@prisma/client";
 import { AcbuRate } from "@prisma/client";
+
+// Cast to PrismaClient to resolve the Accelerate union-type TS2349 error (#717).
+const prisma = _prisma as unknown as PrismaClient;
 
 const TTL_MS = 10_000; // 10 seconds
 

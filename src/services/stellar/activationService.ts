@@ -26,9 +26,7 @@ function getActivationSettings(): {
   };
 }
 
-export async function ensureAccountActivated(
-  destination: string,
-): Promise<ActivationResult> {
+export async function ensureAccountActivated(destination: string): Promise<ActivationResult> {
   const server = stellarClient.getServer();
   const activation = getActivationSettings();
 

@@ -202,7 +202,7 @@ describe("B-444 simultaneous mint and burn", () => {
     expect(prismaMock.transaction.update).toHaveBeenCalledTimes(2);
     expect(mintResult).toEqual({
       transactionId: "mint-tx-1",
-      acbuAmount: 0.1,
+      acbuAmount: "0.1",
     });
     expect(burnRes.status).toHaveBeenCalledWith(200);
     expect(burnRes.json).toHaveBeenCalledWith(

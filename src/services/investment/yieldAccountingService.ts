@@ -40,10 +40,7 @@ function assertValidCredit(credit: YieldCredit): void {
   if (Number.isNaN(credit.timestamp.getTime())) {
     throw new Error("Yield timestamp must be a valid Date");
   }
-  if (
-    credit.currency !== undefined &&
-    !isValidCurrencyCode(credit.currency.toUpperCase())
-  ) {
+  if (credit.currency !== undefined && !isValidCurrencyCode(credit.currency.toUpperCase())) {
     throw new Error("Yield currency must be a 3-letter uppercase code");
   }
 }
@@ -75,9 +72,7 @@ export function recordYield(credit: YieldCredit): void {
  * Get total yield recorded for a source (for reporting).
  */
 export function getYieldTotal(source: YieldSource): number {
-  return yieldLedger
-    .filter((y) => y.source === source)
-    .reduce((sum, y) => sum + y.amountUsd, 0);
+  return yieldLedger.filter((y) => y.source === source).reduce((sum, y) => sum + y.amountUsd, 0);
 }
 
 /**

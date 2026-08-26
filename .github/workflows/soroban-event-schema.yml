@@ -1,0 +1,85 @@
+name: Soroban Event Schema Guard
+
+on:
+  push:
+    branches: [main, develop, dev]
+    paths:
+      - 'contracts/**'
+      - 'wasm/**'
+      - 'shared/events-schema.json'
+      - 'src/jobs/acbu_*_event_listener.ts'
+      - 'src/services/stellar/eventListener.ts'
+      - '.github/workflows/soroban-event-schema.yml'
+  pull_request:
+    paths:
+      - 'contracts/**'
+      - 'wasm/**'
+      - 'shared/events-schema.json'
+      - 'src/jobs/acbu_*_event_listener.ts'
+      - 'src/services/stellar/eventListener.ts'
+      - '.github/workflows/soroban-event-schema.yml'
+  workflow_dispatch:
+
+jobs:
+  event-schema-check:
+    name: Validate Event Schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Validate shared event schema exists and is well-formed
+        run: |
+          if [ ! -f shared/events-schema.json ]; then
+            echo "::error::shared/events-schema.json is missing"
+            exit 1
+          fi
+
+          # Basic JSON validity + required top-level keys
+          node -e '
+            const fs = require("fs");
+            const schema = JSON.parse(fs.readFileSync("shared/events-schema.json", "utf8"));
+            if (!schema.version) throw new Error("Missing version");
+            if (!Array.isArray(schema.events)) throw new Error("events must be an array");
+            if (schema.events.length === 0) {
+              console.warn("::warning::events array is empty – populate with real event shapes when available");
+            }
+            for (const ev of schema.events) {
+              if (!ev.name) throw new Error("Event missing name");
+              if (!ev.contract) throw new Error(`Event ${ev.name} missing contract`);
+              if (!Array.isArray(ev.required_fields)) throw new Error(`Event ${ev.name} missing required_fields`);
+            }
+            console.log("✅ shared/events-schema.json is valid");
+            console.log(`   version: ${schema.version}`);
+            console.log(`   events:  ${schema.events.length}`);
+          '
+
+      - name: Check for future WASM artifacts (informational)
+        run: |
+          WASM_COUNT=$(find . -name "*.wasm" \
+            -not -path "./.git/*" \
+            -not -path "./node_modules/*" \
+            2>/dev/null | wc -l || echo 0)
+
+          if [ "$WASM_COUNT" -gt 0 ]; then
+            echo "Found $WASM_COUNT WASM artifact(s)."
+            echo "When contracts are present, prefer generating schema via:"
+            echo "  stellar contract bindings json --wasm <path> > shared/events-schema.json"
+          else
+            echo "No WASM artifacts present (expected)."
+            echo "Schema is currently maintained manually to match Horizon effect shapes"
+            echo "parsed by the TypeScript event listeners."
+          fi
+
+      - name: Summary
+        run: |
+          echo "Event schema guard passed."
+          echo "See shared/events-schema.json and WASM_INTEGRITY.md for next steps"
+          echo "when real Soroban contracts are added under contracts/ or wasm/."

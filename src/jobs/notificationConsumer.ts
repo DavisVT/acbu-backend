@@ -15,7 +15,11 @@ import {
   renderReserveAlertTemplate,
   renderInvestmentWithdrawalReadyTemplate,
 } from "../services/notification";
-import { parseIncomingMessage, deadLetterMessage, MessageValidationError } from "../utils/rabbitmq-validation";
+import {
+  parseIncomingMessage,
+  deadLetterMessage,
+  MessageValidationError,
+} from "../utils/rabbitmq-validation";
 import type { OtpSend, Notification } from "../types/rabbitmq-schemas";
 
 async function processOtpSend(payload: OtpSend): Promise<void> {
@@ -30,14 +34,11 @@ async function processOtpSend(payload: OtpSend): Promise<void> {
   }
 }
 
-async function processNotification(
-  payload: Notification,
-): Promise<void> {
+async function processNotification(payload: Notification): Promise<void> {
   const { type } = payload;
   if (type === "reserve_alert") {
     const health = payload.health as string;
-    const overcollateralizationRatio =
-      (payload.overcollateralizationRatio as number) ?? 0;
+    const overcollateralizationRatio = (payload.overcollateralizationRatio as number) ?? 0;
     const body = renderReserveAlertTemplate(health, overcollateralizationRatio);
     const adminEmail = process.env.NOTIFICATION_ALERT_EMAIL;
     if (adminEmail) await sendEmail(adminEmail, "ACBU Reserve Alert", body);
@@ -58,8 +59,7 @@ async function processNotification(
       });
       if (channels.includes("email") && user?.email)
         await sendEmail(user.email, "ACBU Withdrawal Update", body);
-      if (channels.includes("sms") && user?.phoneE164)
-        await sendSms(user.phoneE164, body);
+      if (channels.includes("sms") && user?.phoneE164) await sendSms(user.phoneE164, body);
     }
     return;
   }
@@ -74,12 +74,7 @@ async function processNotification(
         where: { id: userId },
         select: { email: true, phoneE164: true },
       });
-      if (user?.email)
-        await sendEmail(
-          user.email,
-          "Your investment withdrawal is ready",
-          body,
-        );
+      if (user?.email) await sendEmail(user.email, "Your investment withdrawal is ready", body);
       if (user?.phoneE164) await sendSms(user.phoneE164, body);
     }
 
@@ -109,7 +104,6 @@ async function processNotification(
   logger.debug("Notification type not handled", { type });
 }
 
-
 export async function startNotificationConsumer(): Promise<void> {
   const ch = await connectRabbitMQ();
   ch.prefetch(2);
@@ -121,7 +115,7 @@ export async function startNotificationConsumer(): Promise<void> {
       if (!msg) return;
       const headers = msg.properties.headers ?? {};
       const retries = typeof headers["x-retries"] === "number" ? headers["x-retries"] : 0;
-      
+
       try {
         // Validate OTP send message
         const validatedPayload = parseIncomingMessage<OtpSend>(QUEUES.OTP_SEND, msg.content);
@@ -161,10 +155,13 @@ export async function startNotificationConsumer(): Promise<void> {
       if (!msg) return;
       const headers = msg.properties.headers ?? {};
       const retries = typeof headers["x-retries"] === "number" ? headers["x-retries"] : 0;
-      
+
       try {
         // Validate notification message
-        const validatedPayload = parseIncomingMessage<Notification>(QUEUES.NOTIFICATIONS, msg.content);
+        const validatedPayload = parseIncomingMessage<Notification>(
+          QUEUES.NOTIFICATIONS,
+          msg.content,
+        );
         await processNotification(validatedPayload);
         ch.ack(msg);
       } catch (e) {
@@ -172,7 +169,11 @@ export async function startNotificationConsumer(): Promise<void> {
           logger.error("NOTIFICATIONS validation failed, sending to DLQ", {
             errors: e.validationErrors,
           });
-          await deadLetterMessage(QUEUES.NOTIFICATIONS, msg.content, `Validation failed: ${e.message}`);
+          await deadLetterMessage(
+            QUEUES.NOTIFICATIONS,
+            msg.content,
+            `Validation failed: ${e.message}`,
+          );
           ch.ack(msg);
           return;
         }

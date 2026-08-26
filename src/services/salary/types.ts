@@ -1,4 +1,3 @@
-
 export interface CreateSalaryBatchParams {
   organizationId?: string;
   userId: string;

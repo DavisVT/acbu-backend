@@ -178,13 +178,13 @@ Run tests to verify fee calculations:
 
 ```bash
 # Unit tests
-npm test -- feePolicyService.test.ts
+pnpm test -- feePolicyService.test.ts
 
 # Property-based tests
-npm test -- feePolicyService.pbt.test.ts
+pnpm test -- feePolicyService.pbt.test.ts
 
 # All tests with coverage
-npm run test:coverage
+pnpm run test:coverage
 ```
 
 ---

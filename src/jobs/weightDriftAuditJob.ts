@@ -21,10 +21,8 @@ import { config } from "../config/env";
 
 const DEFAULT_INTERVAL_DAYS = 7; // Run weekly
 const INTERVAL_MS =
-  (parseInt(
-    process.env.WEIGHT_DRIFT_AUDIT_INTERVAL_DAYS || String(DEFAULT_INTERVAL_DAYS),
-    10,
-  ) || DEFAULT_INTERVAL_DAYS) *
+  (parseInt(process.env.WEIGHT_DRIFT_AUDIT_INTERVAL_DAYS || String(DEFAULT_INTERVAL_DAYS), 10) ||
+    DEFAULT_INTERVAL_DAYS) *
   24 *
   60 *
   60 *
@@ -185,9 +183,7 @@ export async function startWeightDriftAuditScheduler(): Promise<void> {
         // Run audit immediately on first boot if configured
         if (process.env.WEIGHT_DRIFT_AUDIT_RUN_ON_STARTUP === "true") {
           await runWeightDriftAuditOnce();
-          logger.info(
-            "Startup weight drift audit completed, scheduling next run",
-          );
+          logger.info("Startup weight drift audit completed, scheduling next run");
         }
 
         // Calculate next run (Monday 00:00 UTC by default)

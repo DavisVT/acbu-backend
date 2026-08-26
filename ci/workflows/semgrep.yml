@@ -1,0 +1,53 @@
+# Semgrep SAST workflow
+#
+# Install: copy this file to `.github/workflows/semgrep.yml` in each repository.
+#
+# Runs on every push to main/develop and every pull request. Uses the
+# repository-root `.semgrep.yml` rules plus Semgrep's community rulesets.
+# Findings at ERROR severity fail the job (--error), blocking the PR via the
+# required status check `Semgrep SAST`.
+name: "Semgrep"
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: returntocorp/semgrep
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan \
+            --config .semgrep.yml \
+            --config p/owasp-top-ten \
+            --config p/security-audit \
+            --error \
+            --severity ERROR \
+            --json \
+            --output semgrep-report.json \
+            .
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Upload Semgrep report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep-report.json
+          retention-days: 30

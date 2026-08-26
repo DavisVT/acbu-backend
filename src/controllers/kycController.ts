@@ -25,13 +25,12 @@ import {
   MAX_FILE_SIZE_BYTES,
   assertKeyOwnership,
 } from "../services/storage/s3Service";
+import { generateId } from "../utils/idGenerator";
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const requestUploadUrlSchema = z.object({
-  document_kind: z.enum(
-    Object.keys(ALLOWED_MIME_TYPES) as [string, ...string[]],
-  ),
+  document_kind: z.enum(Object.keys(ALLOWED_MIME_TYPES) as [string, ...string[]]),
   mime_type: z.string().min(1).max(100),
   /** Optional: client-supplied document ID (UUID). Server generates one if omitted. */
   document_id: z.string().uuid().optional(),
@@ -39,9 +38,7 @@ const requestUploadUrlSchema = z.object({
 
 const confirmUploadSchema = z.object({
   /** SHA-256 checksum of the uploaded file (hex). Stored for integrity auditing. */
-  checksum: z
-    .string()
-    .regex(/^[a-f0-9]{64}$/, "Must be a 64-char hex SHA-256 checksum"),
+  checksum: z.string().regex(/^[a-f0-9]{64}$/, "Must be a 64-char hex SHA-256 checksum"),
   /** File size in bytes — must not exceed MAX_FILE_SIZE_BYTES. */
   file_size_bytes: z.number().int().positive().max(MAX_FILE_SIZE_BYTES),
 });
@@ -101,14 +98,9 @@ export async function requestUploadUrl(
     // Generate a document ID if not provided
     const documentId =
       body.document_id ??
-      crypto.randomUUID();
+      generateId();
 
-    const result = await generateUploadUrl(
-      userId,
-      body.document_kind,
-      documentId,
-      body.mime_type,
-    );
+    const result = await generateUploadUrl(userId, body.document_kind, documentId, body.mime_type);
 
     // Pre-create the KycDocument record so we can track it before the upload
     const application = await getOrCreateApplication(userId);
@@ -190,7 +182,14 @@ export async function confirmUpload(
         checksum: body.checksum,
         fileSizeBytes: body.file_size_bytes,
       },
-      select: { id: true, kind: true, storageRef: true, checksum: true, scanStatus: true, createdAt: true },
+      select: {
+        id: true,
+        kind: true,
+        storageRef: true,
+        checksum: true,
+        scanStatus: true,
+        createdAt: true,
+      },
     });
 
     logger.info("KYC document upload confirmed", {
@@ -287,16 +286,10 @@ export async function scanWebhook(
         throw new AppError("Missing scan webhook signature", 401);
       }
       const rawBody = JSON.stringify(req.body);
-      const expected = crypto
-        .createHmac("sha256", secret)
-        .update(rawBody)
-        .digest("hex");
+      const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
       const sigBuffer = Buffer.from(signature, "hex");
       const expBuffer = Buffer.from(expected, "hex");
-      if (
-        sigBuffer.length !== expBuffer.length ||
-        !crypto.timingSafeEqual(sigBuffer, expBuffer)
-      ) {
+      if (sigBuffer.length !== expBuffer.length || !crypto.timingSafeEqual(sigBuffer, expBuffer)) {
         throw new AppError("Invalid scan webhook signature", 401);
       }
     } else if (config.nodeEnv === "production") {

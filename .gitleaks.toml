@@ -1,0 +1,18 @@
+# Gitleaks config for acbu-backend
+# Extends default rules; keep allowlists tight.
+
+title = "acbu-backend"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known safe paths and test fixtures"
+paths = [
+  '''\.env\.example$''',
+  '''\.env\.test$''',
+  '''docs/''',
+  '''.*\.md$''',
+]
+
+# Intentionally do NOT allowlist .env.local — it must not be committed.

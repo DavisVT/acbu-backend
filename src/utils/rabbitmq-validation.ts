@@ -1,16 +1,16 @@
-import { z } from 'zod';
-import { v4 as uuidv4 } from 'uuid';
-import { logger } from '../config/logger';
-import { getRabbitMQChannel, QUEUES } from '../config/rabbitmq';
-import { QUEUE_SCHEMAS, MessageEnvelopeSchema, MessageEnvelope } from '../types/rabbitmq-schemas';
+import { z } from "zod";
+import { v4 as uuidv4 } from "uuid";
+import { logger } from "../config/logger";
+import { getRabbitMQChannel } from "../config/rabbitmq";
+import { QUEUE_SCHEMAS, MessageEnvelopeSchema, MessageEnvelope } from "../types/rabbitmq-schemas";
 
 export class MessageValidationError extends Error {
   public readonly queue: string;
-  public readonly validationErrors: z.ZodError['errors'];
+  public readonly validationErrors: z.ZodError["errors"];
 
-  constructor(queue: string, validationErrors: z.ZodError['errors']) {
+  constructor(queue: string, validationErrors: z.ZodError["errors"]) {
     super(`Message validation failed for queue: ${queue}`);
-    this.name = 'MessageValidationError';
+    this.name = "MessageValidationError";
     this.queue = queue;
     this.validationErrors = validationErrors;
   }
@@ -21,7 +21,7 @@ export class MessageValidationError extends Error {
  */
 export function validateMessage<T>(queue: string, payload: unknown): T {
   const schema = QUEUE_SCHEMAS[queue as keyof typeof QUEUE_SCHEMAS];
-  
+
   if (!schema) {
     throw new Error(`No schema defined for queue: ${queue}`);
   }
@@ -30,7 +30,7 @@ export function validateMessage<T>(queue: string, payload: unknown): T {
     return schema.parse(payload) as T;
   } catch (error) {
     if (error instanceof z.ZodError) {
-      logger.error('Message validation failed', {
+      logger.error("Message validation failed", {
         queue,
         errors: error.errors,
         payload: JSON.stringify(payload).substring(0, 500),
@@ -47,7 +47,7 @@ export function validateMessage<T>(queue: string, payload: unknown): T {
 export async function publishValidatedMessage<T>(
   queue: string,
   payload: T,
-  options?: { persistent?: boolean; priority?: number }
+  options?: { persistent?: boolean; priority?: number },
 ): Promise<void> {
   const channel = getRabbitMQChannel();
 
@@ -72,13 +72,13 @@ export async function publishValidatedMessage<T>(
     persistent: options?.persistent ?? true,
     priority: options?.priority,
     headers: {
-      'x-message-version': 1,
-      'x-message-id': envelope.messageId,
-      'x-schema-validated': true,
+      "x-message-version": 1,
+      "x-message-id": envelope.messageId,
+      "x-schema-validated": true,
     },
   });
 
-  logger.debug('Validated message published', {
+  logger.debug("Validated message published", {
     queue,
     messageId: envelope.messageId,
     version: envelope.version,
@@ -88,24 +88,21 @@ export async function publishValidatedMessage<T>(
 /**
  * Validate and parse an incoming message
  */
-export function parseIncomingMessage<T>(
-  queue: string,
-  content: Buffer
-): T {
+export function parseIncomingMessage<T>(queue: string, content: Buffer): T {
   try {
     const raw = JSON.parse(content.toString());
     const envelope = MessageEnvelopeSchema.parse(raw);
-    
+
     // Validate payload against queue schema
     const validatedPayload = validateMessage(queue, envelope.payload);
-    
+
     return validatedPayload as T;
   } catch (error) {
     if (error instanceof MessageValidationError) {
       throw error;
     }
     if (error instanceof z.ZodError) {
-      logger.error('Invalid message envelope', {
+      logger.error("Invalid message envelope", {
         queue,
         errors: error.errors,
       });
@@ -121,7 +118,7 @@ export function parseIncomingMessage<T>(
 export async function deadLetterMessage(
   queue: string,
   content: Buffer,
-  reason: string
+  reason: string,
 ): Promise<void> {
   const channel = getRabbitMQChannel();
   const dlqName = `${queue}_dlq`;
@@ -130,12 +127,12 @@ export async function deadLetterMessage(
   channel.sendToQueue(dlqName, content, {
     persistent: true,
     headers: {
-      'x-dead-letter-reason': reason,
-      'x-dead-letter-time': new Date().toISOString(),
+      "x-dead-letter-reason": reason,
+      "x-dead-letter-time": new Date().toISOString(),
     },
   });
 
-  logger.warn('Message sent to DLQ', {
+  logger.warn("Message sent to DLQ", {
     queue,
     dlq: dlqName,
     reason,

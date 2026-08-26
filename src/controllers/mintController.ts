@@ -18,10 +18,7 @@ import {
   isAllowedDepositCurrency,
   isForbiddenDepositCurrency,
 } from "../config/basket";
-import {
-  checkDepositLimits,
-  isMintingPaused,
-} from "../services/limits/limitsService";
+import { checkDepositLimits, isMintingPaused } from "../services/limits/limitsService";
 import { enqueueUsdcConvertAndMint } from "../jobs/usdcConvertAndMintJob";
 import { AppError } from "../middleware/errorHandler";
 import { ErrorCodes } from "../types/errorCodes";
@@ -91,12 +88,8 @@ export async function mintFromUsdc(
     }
 
     const { usdc_amount, wallet_address } = parsed.data;
-    const userWalletAddress = await assertUserWalletAddress(
-      userId,
-      wallet_address,
-    );
+    const userWalletAddress = await assertUserWalletAddress(userId, wallet_address);
     const usdcDecimal = parseMonetaryString(usdc_amount, "usdc_amount");
-    const usdcNum = usdcDecimal.toNumber(); // Only convert at boundary for limits service
     // SECURITY: Always enforce circuit breaker and deposit limits
     // Previously these checks were skipped when req.audience was undefined,
     // allowing bypass of critical financial controls via direct /mint/usdc route
@@ -112,12 +105,7 @@ export async function mintFromUsdc(
     // Apply deposit limits - use retail as default if no audience is set
     // FIX #32: Defaulting to "retail" prevents limit bypass when audience is undefined
     const audience = req.audience || "retail";
-    await checkDepositLimits(
-      audience,
-      usdcNum,
-      userId,
-      req.apiKey?.organizationId ?? null,
-    );
+    await checkDepositLimits(audience, usdcDecimal, userId, req.apiKey?.organizationId ?? null);
 
     let swap;
     try {
@@ -175,7 +163,7 @@ export async function mintFromUsdcInternal(
   walletAddress: string,
   userId?: string,
   organizationId?: string,
-): Promise<{ transactionId: string; acbuAmount: number }> {
+): Promise<{ transactionId: string; acbuAmount: string }> {
   const usdcDecimal = new Decimal(usdcAmount);
   const feeUsdcDecimal = calculateFee(usdcDecimal, MINT_FEE_BPS);
   const usdcAmount7 = decimalToContractNumber(usdcDecimal).toString();
@@ -226,7 +214,6 @@ export async function mintFromUsdcInternal(
       recipient: walletAddress,
     });
     const acbuDecimal = contractNumberToDecimal(Number(result.acbuAmount));
-    const acbuNum = acbuDecimal.toNumber();
     await prisma.transaction.update({
       where: { id: tx.id },
       data: {
@@ -236,7 +223,7 @@ export async function mintFromUsdcInternal(
         completedAt: new Date(),
       },
     });
-    return { transactionId: tx.id, acbuAmount: acbuNum };
+    return { transactionId: tx.id, acbuAmount: acbuDecimal.toString() };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error("Soroban mint_from_usdc failed", {
@@ -270,9 +257,7 @@ export const depositBodySchema = z.object({
     .length(3)
     .transform((value) => value.toUpperCase())
     .refine(
-      (currency) =>
-        isAllowedDepositCurrency(currency) ||
-        isForbiddenDepositCurrency(currency),
+      (currency) => isAllowedDepositCurrency(currency) || isForbiddenDepositCurrency(currency),
       {
         message: `Currency must be one of: ${[
           ...BASKET_CURRENCIES,
@@ -366,7 +351,7 @@ export async function depositFromBasketCurrency(
 
     await checkDepositLimits(
       audience,
-      amountUsd,
+      new Decimal(amountUsd),
       userId,
       req.apiKey?.organizationId ?? null,
     );

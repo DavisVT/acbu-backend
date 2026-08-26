@@ -93,7 +93,7 @@ pnpm prisma:seed
 pnpm dev
 ```
 
-The server will start on `http://localhost:3000` (or the port specified in `.env`).
+The server will start on `http://localhost:5000` (or the port specified in `.env`).
 
 Nodemon will automatically restart the server when you make changes to the code.
 
@@ -135,7 +135,7 @@ backend/
 ## API Documentation
 
 Once the server is running, API documentation is available at:
-- Swagger UI: `http://localhost:3000/api-docs` (development only, disabled in production for security)
+- Swagger UI: `http://localhost:5000/api-docs` (development only, disabled in production for security)
 
 **Segment routes** (require API key with segment scope): `/v1/p2p`, `/v1/sme`, `/v1/international`, `/v1/salary`, `/v1/enterprise`, `/v1/savings`, `/v1/lending`, `/v1/gateway`, `/v1/bills`. For a full list of routes and smart contracts, see the repository docs in the `docs/` folder.
 
@@ -173,9 +173,9 @@ pnpm test:coverage
 
 ## Environment Variables
 
-**Full list:** See [ENV_VARS.md](ENV_VARS.md). No mock data; all values must be real or explicitly empty.
+**Full list:** See [ENV_VARS.md](./ENV_VARS.md). No mock data; all values must be real or explicitly empty.
 
-**Required:** `DATABASE_URL` (migrations / fallback), `MONGODB_URI` (MongoDB Atlas), `RABBITMQ_URL`, `JWT_SECRET`. Runtime DB: **Prisma Accelerate** via `PRISMA_ACCELERATE_URL` (see [ENV_VARS.md](ENV_VARS.md)).
+**Required:** `DATABASE_URL` (migrations / fallback), `MONGODB_URI` (MongoDB Atlas), `RABBITMQ_URL`, `JWT_SECRET`. Runtime DB: **Prisma Accelerate** via `PRISMA_ACCELERATE_URL` (see [ENV_VARS.md](./ENV_VARS.md)).
 
 **Fintech:** Flutterwave (`FLUTTERWAVE_SECRET_KEY`, etc.), Paystack (`PAYSTACK_SECRET_KEY`), MTN MoMo (`MTN_MOMO_SUBSCRIPTION_KEY`, `MTN_MOMO_API_USER_ID`, `MTN_MOMO_API_KEY`). Optional: `FINTECH_CURRENCY_PROVIDERS`.
 

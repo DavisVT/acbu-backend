@@ -1,0 +1,107 @@
+name: Verify WASM Integrity
+
+on:
+  push:
+    branches: [main, dev, develop]
+    paths:
+      - "contracts/**"
+      - "wasm/**"
+      - ".wasm-checksums"
+      - ".github/workflows/verify-wasm-integrity.yml"
+  pull_request:
+    branches: [main, dev, develop]
+    paths:
+      - "contracts/**"
+      - "wasm/**"
+      - ".wasm-checksums"
+      - ".github/workflows/verify-wasm-integrity.yml"
+  # Allow manual runs to verify integrity on demand
+  workflow_dispatch:
+
+jobs:
+  verify-wasm-integrity:
+    name: Verify WASM Checksums
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for WASM artifacts
+        id: find-wasm
+        run: |
+          # Find all .wasm files tracked in the repository
+          WASM_FILES=$(find . -name "*.wasm" \
+            -not -path "./.git/*" \
+            -not -path "./node_modules/*" \
+            2>/dev/null || true)
+
+          if [ -z "$WASM_FILES" ]; then
+            echo "No .wasm files found in repository. Nothing to verify."
+            echo "has_wasm=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Found WASM files:"
+            echo "$WASM_FILES"
+            echo "has_wasm=true" >> "$GITHUB_OUTPUT"
+            echo "wasm_files<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$WASM_FILES" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify checksums against .wasm-checksums
+        if: steps.find-wasm.outputs.has_wasm == 'true'
+        run: |
+          if [ ! -f ".wasm-checksums" ]; then
+            echo "::error::.wasm-checksums file is missing. WASM artifacts are present but have no recorded checksums."
+            echo "Run: sha256sum \$(find . -name '*.wasm' -not -path './.git/*' -not -path './node_modules/*') > .wasm-checksums"
+            echo "Then commit .wasm-checksums to the repository."
+            exit 1
+          fi
+
+          echo "Verifying WASM file integrity against recorded checksums..."
+          sha256sum --check .wasm-checksums
+          echo "All WASM checksums verified successfully."
+
+      - name: Detect unregistered WASM files
+        if: steps.find-wasm.outputs.has_wasm == 'true'
+        run: |
+          # Ensure every .wasm file in the repo appears in .wasm-checksums
+          UNREGISTERED=""
+          while IFS= read -r wasm_file; do
+            # Strip leading ./ for consistent comparison
+            normalized="${wasm_file#./}"
+            if ! grep -q "$normalized" .wasm-checksums 2>/dev/null; then
+              UNREGISTERED="$UNREGISTERED $normalized"
+            fi
+          done <<< "${{ steps.find-wasm.outputs.wasm_files }}"
+
+          if [ -n "$UNREGISTERED" ]; then
+            echo "::error::The following WASM files are not registered in .wasm-checksums:$UNREGISTERED"
+            echo "Add them with: sha256sum$UNREGISTERED >> .wasm-checksums"
+            exit 1
+          fi
+
+          echo "All WASM files are registered in .wasm-checksums."
+
+      - name: Check for stale checksum entries
+        if: steps.find-wasm.outputs.has_wasm == 'true'
+        run: |
+          # Warn if .wasm-checksums references files that no longer exist
+          STALE=""
+          while IFS= read -r line; do
+            # Each line in sha256sum format: "<hash>  <path>"
+            recorded_path=$(echo "$line" | awk '{print $2}')
+            if [ ! -f "$recorded_path" ]; then
+              STALE="$STALE\n  $recorded_path"
+            fi
+          done < .wasm-checksums
+
+          if [ -n "$STALE" ]; then
+            echo "::warning::Stale entries in .wasm-checksums (files no longer exist):$STALE"
+            echo "Remove stale entries by regenerating: sha256sum \$(find . -name '*.wasm' ...) > .wasm-checksums"
+          fi
+
+      - name: Skip — no WASM artifacts present
+        if: steps.find-wasm.outputs.has_wasm == 'false'
+        run: |
+          echo "No WASM artifacts found. This is expected until Soroban contracts are compiled and committed."
+          echo "See WASM_INTEGRITY.md for instructions on registering contract artifacts."

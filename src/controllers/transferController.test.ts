@@ -1,8 +1,4 @@
-import {
-  postTransfers,
-  getTransfers,
-  getTransferById,
-} from "./transferController";
+import { postTransfers, getTransfers, getTransferById } from "./transferController";
 import { prisma } from "../config/database";
 import type { AuthRequest } from "../middleware/auth";
 import type { Response, NextFunction } from "express";
@@ -60,11 +56,7 @@ describe("transferController", () => {
 
     it("returns 401 when apiKey is absent entirely", async () => {
       const next = makeNext();
-      await postTransfers(
-        { body: {} } as unknown as AuthRequest,
-        makeRes(),
-        next,
-      );
+      await postTransfers({ body: {} } as unknown as AuthRequest, makeRes(), next);
       expect((next as jest.Mock).mock.calls[0][0]).toMatchObject({
         statusCode: 401,
       });
@@ -181,9 +173,7 @@ describe("transferController", () => {
     });
 
     it("returns 404 when sender user record is missing", async () => {
-      (createTransfer as jest.Mock).mockRejectedValue(
-        new Error("Sender user not found"),
-      );
+      (createTransfer as jest.Mock).mockRejectedValue(new Error("Sender user not found"));
       const next = makeNext();
       await postTransfers(
         {
@@ -199,9 +189,7 @@ describe("transferController", () => {
     });
 
     it("returns 400 on self-transfer attempt", async () => {
-      (createTransfer as jest.Mock).mockRejectedValue(
-        new Error("Cannot transfer to yourself"),
-      );
+      (createTransfer as jest.Mock).mockRejectedValue(new Error("Cannot transfer to yourself"));
       const next = makeNext();
       await postTransfers(
         {

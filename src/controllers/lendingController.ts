@@ -5,12 +5,12 @@ import type { AuthRequest } from "../middleware/auth";
 import { AppError } from "../middleware/errorHandler";
 
 export async function postLendingDeposit(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { lender, amount } = (req as AuthRequest).body || {};
+    const { lender, amount } = req.body || {};
     if (!lender || !amount) {
       throw new AppError("lender and amount required", 400);
     }
@@ -31,12 +31,12 @@ export async function postLendingDeposit(
 }
 
 export async function postLendingWithdraw(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { lender, amount } = (req as AuthRequest).body || {};
+    const { lender, amount } = req.body || {};
     if (!lender || !amount) {
       throw new AppError("lender and amount required", 400);
     }
@@ -51,12 +51,12 @@ export async function postLendingWithdraw(
 }
 
 export async function getLendingBalance(
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    const lender = (req as AuthRequest).query?.lender as string;
+    const lender = req.query?.lender as string;
     if (!lender) {
       throw new AppError("query lender required", 400);
     }

@@ -1,7 +1,7 @@
 process.env.DATABASE_URL = "postgresql://test:test@localhost/test";
 process.env.MONGODB_URI = "mongodb://localhost/test";
 process.env.RABBITMQ_URL = "amqp://localhost";
-process.env.JWT_SECRET = "test-secret";
+process.env.JWT_SECRET = "test-secret-min-32-characters-long";
 
 jest.mock("../src/config/database", () => ({
   prisma: {
@@ -80,7 +80,7 @@ describe("B-075 — On-ramp swap race: duplicate processing", () => {
       swapUsdcToXlm.mockResolvedValue({ xlmReceived: 500, txHash: "txhash1" });
       mintFromUsdcInternal.mockResolvedValue({
         transactionId: "tx-001",
-        acbuAmount: 95,
+        acbuAmount: "95",
       });
       (prisma.onRampSwap.update as jest.Mock).mockResolvedValue({});
 
@@ -133,7 +133,7 @@ describe("B-075 — On-ramp swap race: duplicate processing", () => {
       });
       mintFromUsdcInternal.mockResolvedValue({
         transactionId: "tx-002",
-        acbuAmount: 9,
+        acbuAmount: "9",
       });
       (prisma.onRampSwap.update as jest.Mock).mockResolvedValue({});
 

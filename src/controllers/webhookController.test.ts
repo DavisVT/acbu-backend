@@ -72,7 +72,7 @@ jest.mock("../config/env", () => ({
       updateIntervalHours: 6,
       emergencyThreshold: 0.05,
       maxDeviationPerUpdate: 0.05,
-      circuitBreakerThreshold: 0.10,
+      circuitBreakerThreshold: 0.1,
       forex: { baseUrl: "", apiKey: "" },
       centralBankUrls: {},
     },
@@ -158,13 +158,8 @@ describe("webhookController", () => {
     const futureTimestamp = () => String(Math.floor(Date.now() / 1000) + 600); // 10 min ahead
 
     it("calls next() with no args on a valid HMAC-SHA256 signature", () => {
-      const rawBody = Buffer.from(
-        JSON.stringify({ event: "charge.completed" }),
-      );
-      const sig = crypto
-        .createHmac("sha256", FW_SECRET)
-        .update(rawBody)
-        .digest("hex");
+      const rawBody = Buffer.from(JSON.stringify({ event: "charge.completed" }));
+      const sig = crypto.createHmac("sha256", FW_SECRET).update(rawBody).digest("hex");
       const req = {
         headers: { "verif-hash": sig, "x-flw-timestamp": validTimestamp() },
         rawBody,
@@ -175,9 +170,7 @@ describe("webhookController", () => {
     });
 
     it("returns 401 on mismatched signature", () => {
-      const rawBody = Buffer.from(
-        JSON.stringify({ event: "charge.completed" }),
-      );
+      const rawBody = Buffer.from(JSON.stringify({ event: "charge.completed" }));
       const req = {
         headers: { "verif-hash": "a".repeat(64), "x-flw-timestamp": validTimestamp() },
         rawBody,
@@ -192,7 +185,10 @@ describe("webhookController", () => {
 
     it("returns 401 when verif-hash header is absent", () => {
       const rawBody = Buffer.from("{}");
-      const req = { headers: { "x-flw-timestamp": validTimestamp() }, rawBody } as unknown as RawRequest;
+      const req = {
+        headers: { "x-flw-timestamp": validTimestamp() },
+        rawBody,
+      } as unknown as RawRequest;
       const res = makeRes();
       verifyFlutterwaveSignature(req, res, makeNext());
       expect(res.status).toHaveBeenCalledWith(401);
@@ -202,7 +198,9 @@ describe("webhookController", () => {
     });
 
     it("returns 400 when rawBody is missing", () => {
-      const req = { headers: { "verif-hash": "abc", "x-flw-timestamp": validTimestamp() } } as unknown as RawRequest;
+      const req = {
+        headers: { "verif-hash": "abc", "x-flw-timestamp": validTimestamp() },
+      } as unknown as RawRequest;
       const res = makeRes();
       verifyFlutterwaveSignature(req, res, makeNext());
       expect(res.status).toHaveBeenCalledWith(400);
@@ -284,10 +282,7 @@ describe("webhookController", () => {
 
     it("calls next() with no args on a valid HMAC-SHA512 signature", () => {
       const rawBody = Buffer.from(JSON.stringify({ event: "charge.success" }));
-      const sig = crypto
-        .createHmac("sha512", PS_SECRET)
-        .update(rawBody)
-        .digest("hex");
+      const sig = crypto.createHmac("sha512", PS_SECRET).update(rawBody).digest("hex");
       const req = {
         headers: { "x-paystack-signature": sig, "x-paystack-timestamp": validTimestamp() },
         rawBody,
@@ -313,7 +308,10 @@ describe("webhookController", () => {
 
     it("returns 401 when x-paystack-signature header is absent", () => {
       const rawBody = Buffer.from("{}");
-      const req = { headers: { "x-paystack-timestamp": validTimestamp() }, rawBody } as unknown as RawRequest;
+      const req = {
+        headers: { "x-paystack-timestamp": validTimestamp() },
+        rawBody,
+      } as unknown as RawRequest;
       const res = makeRes();
       verifyPaystackSignature(req, res, makeNext());
       expect(res.status).toHaveBeenCalledWith(401);
@@ -422,11 +420,7 @@ describe("webhookController", () => {
 
     it("uses 'unknown' eventType when event field is absent", async () => {
       (prisma.webhook.create as jest.Mock).mockResolvedValue({});
-      await handlePaystackWebhook(
-        { headers: {}, body: {} } as Request,
-        makeRes(),
-        makeNext(),
-      );
+      await handlePaystackWebhook({ headers: {}, body: {} } as Request, makeRes(), makeNext());
       expect(prisma.webhook.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ eventType: "paystack:unknown" }),
@@ -435,9 +429,7 @@ describe("webhookController", () => {
     });
 
     it("calls next(error) when DB write fails", async () => {
-      (prisma.webhook.create as jest.Mock).mockRejectedValue(
-        new Error("DB error"),
-      );
+      (prisma.webhook.create as jest.Mock).mockRejectedValue(new Error("DB error"));
       const next = makeNext();
       await handlePaystackWebhook(
         { headers: {}, body: { event: "charge.success" } } as Request,
@@ -494,9 +486,7 @@ describe("webhookController", () => {
     });
 
     it("calls next(error) when DB write fails", async () => {
-      (prisma.webhook.create as jest.Mock).mockRejectedValue(
-        new Error("DB error"),
-      );
+      (prisma.webhook.create as jest.Mock).mockRejectedValue(new Error("DB error"));
       const next = makeNext();
       await handleFlutterwaveWebhook({ headers: {}, body: {} } as Request, makeRes(), next);
       expect(next).toHaveBeenCalledWith(expect.any(Error));

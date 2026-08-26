@@ -289,7 +289,7 @@ All entries include:
 Run the test suite:
 
 ```bash
-npm test -- tests/weightDriftAudit.test.ts
+pnpm test -- tests/weightDriftAudit.test.ts
 ```
 
 **Test Coverage:**

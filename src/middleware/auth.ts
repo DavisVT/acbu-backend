@@ -5,6 +5,7 @@ import bcrypt from "bcrypt";
 import { AppError } from "./errorHandler";
 import { logger } from "../config/logger";
 import { EXPECTED_JWT_TYP } from "./authMiddleware";
+import { requireAdminApiKey } from "./adminAuth";
 import { PermissionScopeEnum, PermissionScope } from "../types/permissions";
 
 export type Audience = "retail" | "business" | "government";
@@ -30,6 +31,7 @@ export interface AuthRequest extends Request {
     permissions: PermissionScope[];
     rateLimit: number;
   };
+  adminId?: string;
   /** Set by audience-specific routes (e.g. /retail, /business, /government) for limits and behaviour. */
   audience?: Audience;
   /** Optional user tier populated by upstream middleware/services for authorization checks. */
@@ -65,9 +67,7 @@ function validatePermissions(permissions: unknown): PermissionScope[] {
   return valid;
 }
 
-function parseApiKey(
-  rawApiKey: string,
-): { lookupKey: string; secret: string } | null {
+function parseApiKey(rawApiKey: string): { lookupKey: string; secret: string } | null {
   const match = rawApiKey.trim().match(API_KEY_FORMAT);
   if (!match) {
     return null;
@@ -100,10 +100,7 @@ function rejectIfJwtToken(token: string): void {
         // Check if this is a challenge token (has 2fa_challenge audience)
         if (decoded.aud === "2fa_challenge" && decoded.iss === "acbu/auth") {
           logger.error("Attempted to use 2FA challenge token for API access");
-          throw new AppError(
-            "Challenge tokens cannot be used for API access",
-            401,
-          );
+          throw new AppError("Challenge tokens cannot be used for API access", 401);
         }
         // Reject any JWT-like token that isn't a standard API key
         logger.warn("Non-API-key JWT token rejected for API access");
@@ -117,6 +114,15 @@ function rejectIfJwtToken(token: string): void {
 }
 
 /**
+ * Validate the admin API key for admin-only routes (e.g. /v1/admin/weight-drift-audits).
+ * Requires the `x-admin-key` header to match ADMIN_API_KEY env var.
+ *
+ * Delegates to requireAdminApiKey (middleware/adminAuth.ts) so the timing-safe
+ * comparison against ADMIN_API_KEY has a single implementation.
+ */
+export const validateAdminKey = requireAdminApiKey;
+
+/**
  * Middleware to validate API key
  */
 export const validateApiKey = async (
@@ -125,9 +131,7 @@ export const validateApiKey = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    const apiKey =
-      req.headers["x-api-key"] ||
-      req.headers["authorization"]?.replace("Bearer ", "");
+    const apiKey = req.headers["x-api-key"] || req.headers["authorization"]?.replace("Bearer ", "");
 
     if (!apiKey || typeof apiKey !== "string") {
       throw new AppError("API key is required", 401);
@@ -169,10 +173,7 @@ export const validateApiKey = async (
     }
 
     // Single bcrypt verification.
-    const isValid = await bcrypt.compare(
-      parsedApiKey.secret,
-      apiKeyRecord.keyHash,
-    );
+    const isValid = await bcrypt.compare(parsedApiKey.secret, apiKeyRecord.keyHash);
     if (!isValid) {
       throw new AppError("Invalid API key", 401);
     }
@@ -183,9 +184,7 @@ export const validateApiKey = async (
         where: { id: apiKeyRecord.id },
         data: { lastUsedAt: new Date() },
       })
-      .catch((e: any) =>
-        logger.error("Failed to update API key lastUsedAt", { e }),
-      );
+      .catch((e: any) => logger.error("Failed to update API key lastUsedAt", { e }));
 
     req.apiKey = {
       id: apiKeyRecord.id,
@@ -202,6 +201,47 @@ export const validateApiKey = async (
     if (apiKeyRecord.user?.tier) {
       req.userTier = apiKeyRecord.user.tier as UserTier;
     }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const ADMIN_KEY_TYPES: ApiKeyType[] = ["ADMIN_KEY", "BREAK_GLASS_KEY"];
+
+/**
+ * Middleware to validate admin API key
+ * Requires a valid API key with ADMIN_KEY or BREAK_GLASS_KEY type.
+ * Sets req.adminId for downstream route handlers / audit trails.
+ */
+export const validateAdminKey = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.apiKey) {
+      await new Promise<void>((resolve, reject) => {
+        validateApiKey(req, res, (err?: unknown) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
+
+    if (!req.apiKey) {
+      throw new AppError("API key is required", 401);
+    }
+
+    if (!ADMIN_KEY_TYPES.includes(req.apiKey.keyType)) {
+      throw new AppError("Admin key required for this operation", 403);
+    }
+
+    req.adminId = req.apiKey.userId ?? req.apiKey.createdByUserId ?? req.apiKey.id;
 
     next();
   } catch (error) {
