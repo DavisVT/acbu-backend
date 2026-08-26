@@ -1,4 +1,4 @@
-import { getRabbitMQChannel, assertQueueWithDLQ } from '../../config/rabbitmq';
+import { assertQueueWithDLQ } from '../../config/rabbitmq';
 import { logger } from '../../config/logger';
 import { publishValidatedMessage } from '../../utils/rabbitmq-validation';
 

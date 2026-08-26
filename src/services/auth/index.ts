@@ -8,6 +8,8 @@ export {
   signup,
   verify2fa,
   resolveUserByIdentifier,
+  refreshAccessToken,
+  revokeRefreshToken,
   type IssueAdminKeyParams,
   type IssueBreakGlassKeyParams,
   type IssuePrivilegedKeyResult,
@@ -19,4 +21,7 @@ export {
   type SignupResult,
   type Verify2faParams,
   type Verify2faResult,
+  type RefreshAccessTokenParams,
+  type RefreshAccessTokenResult,
+  type RevokeRefreshTokenParams,
 } from "./authService";

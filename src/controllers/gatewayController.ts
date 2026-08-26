@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { acbuEscrowService } from "../services/contracts";
 import { getContractAddresses } from "../config/contracts";
 import type { AuthRequest } from "../middleware/auth";

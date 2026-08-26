@@ -465,6 +465,14 @@ export const config = {
     usdcXlmSlippageBps: parseInt(process.env.USDC_XLM_SLIPPAGE_BPS ?? "50", 10),
   },
 
+  // Bulk transfer CSV upload processing
+  bulkTransfer: {
+    /** Rows per transaction chunk. Default 100. */
+    chunkSize: parseInt(process.env.BULK_TRANSFER_CHUNK_SIZE || "100", 10),
+    /** Upload size limit in bytes. Default 10485760 (10 MiB). */
+    maxFileSizeBytes: parseInt(process.env.BULK_TRANSFER_MAX_FILE_SIZE_BYTES || "10485760", 10),
+  },
+
   // Oracle (40/40/20: central bank, fintech, forex)
   oracle: {
     updateIntervalHours: parseInt(process.env.ORACLE_UPDATE_INTERVAL_HOURS || "6", 10),

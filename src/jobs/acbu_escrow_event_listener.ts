@@ -13,7 +13,13 @@ const ESCROW_EFFECT_TYPES = [
   "contract_credited",
   "contract_debited",
   "contract_effect",
-];
+] as const;
+
+type EscrowEffectType = (typeof ESCROW_EFFECT_TYPES)[number];
+
+function isEscrowEffectType(type: string): type is EscrowEffectType {
+  return (ESCROW_EFFECT_TYPES as readonly string[]).includes(type);
+}
 
 export async function startEscrowEventListener(): Promise<void> {
   const contractId = getContractAddresses().escrow;
@@ -24,12 +30,22 @@ export async function startEscrowEventListener(): Promise<void> {
 
   const handler = async (event: ContractEvent): Promise<void> => {
     try {
+      // listenToContractEvents (below) already filters to ESCROW_EFFECT_TYPES
+      // before invoking this handler, so this should be unreachable — narrow
+      // explicitly anyway rather than casting past the compiler.
+      if (!isEscrowEffectType(event.type)) {
+        logger.warn("Escrow event with unexpected type reached handler", {
+          type: event.type,
+        });
+        return;
+      }
+
       const validatedEvent = {
         contractId: event.contractId,
         type: event.type,
         data: event.data || {},
         ledger: event.ledger,
-        timestamp: event.timestamp || new Date().toISOString(),
+        timestamp: new Date(event.timestamp || Date.now()).toISOString(),
       };
 
       // Use producer with validation
@@ -50,7 +66,7 @@ export async function startEscrowEventListener(): Promise<void> {
 
   eventListener.listenToContractEvents(
     contractId,
-    ESCROW_EFFECT_TYPES,
+    [...ESCROW_EFFECT_TYPES],
     handler,
   );
   logger.info("Escrow event listener registered with validation", {

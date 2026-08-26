@@ -168,9 +168,29 @@ let currentUseAccelerate = resolveDatabaseUrls().useAccelerate;
 // Create the extension instance
 const prismaExtension = createPrismaExtension();
 
-// Apply the extension to the clients
-const extendedPrisma = basePrisma.$extends(prismaExtension);
-const extendedPrismaReplica = basePrismaReplica.$extends(prismaExtension);
+/**
+ * Applies the tracing/retry extension (and Accelerate, when enabled) to a
+ * base client.
+ *
+ * Each `$extends()` call produces a new, more deeply nested generic type;
+ * chaining two of them inline (tracing extension + Accelerate) makes
+ * TypeScript's structural inference blow up with "Type instantiation is
+ * excessively deep and possibly infinite" (TS2589). None of our extensions
+ * change the client's public model-delegate surface, so it's safe to erase
+ * back to the plain `PrismaClient` type at this function boundary — casting
+ * through `unknown` here (rather than inline at each call site) keeps that
+ * single documented escape hatch in one place instead of scattered casts.
+ */
+function withExtensions(client: PrismaClient, useAccelerate: boolean): PrismaClient {
+  // Cast back to PrismaClient immediately after each $extends() call (rather
+  // than once at the end) so the *next* $extends() operates on the plain
+  // type instead of compounding an already-deep generic instantiation.
+  const extended = client.$extends(prismaExtension) as unknown as PrismaClient;
+  if (!useAccelerate) {
+    return extended;
+  }
+  return extended.$extends(withAccelerate()) as unknown as PrismaClient;
+}
 
 logger.info(
   `[database] Runtime connection: ${currentUseAccelerate ? "Prisma Accelerate (pooled)" : "direct PostgreSQL"}`,
@@ -212,10 +232,10 @@ function refreshPrismaClientsIfNeeded(): void {
   currentReplicaUrl = resolved.replicaUrl;
   currentUseAccelerate = resolved.useAccelerate;
 
-  // Re-apply the extension to refreshed clients
-  const newExtendedPrisma = basePrisma.$extends(prismaExtension);
-  const newExtendedPrismaReplica = basePrismaReplica.$extends(prismaExtension);
-
+  // Note: the extension is re-applied to the refreshed base clients by the
+  // caller (connectWithRetry), which also reassigns the exported `prisma` /
+  // `prismaReplica` bindings — this function only needs to swap the base
+  // clients and disconnect the stale ones.
   void previousBasePrisma.$disconnect().catch((err: unknown) => {
     logger.warn("[database] Failed to disconnect previous Prisma client", { error: err });
   });
@@ -228,12 +248,8 @@ function refreshPrismaClientsIfNeeded(): void {
   );
 }
 
-export let prisma = currentUseAccelerate
-  ? extendedPrisma.$extends(withAccelerate())
-  : extendedPrisma;
-export let prismaReplica = currentUseAccelerate
-  ? extendedPrismaReplica.$extends(withAccelerate())
-  : extendedPrismaReplica;
+export let prisma: PrismaClient = withExtensions(basePrisma, currentUseAccelerate);
+export let prismaReplica: PrismaClient = withExtensions(basePrismaReplica, currentUseAccelerate);
 
 // Log queries in development ($on exists only on base client, not on extended proxy)
 if (config.nodeEnv === "development") {
@@ -297,12 +313,8 @@ export async function connectWithRetry(): Promise<void> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       refreshPrismaClientsIfNeeded();
-      prisma = currentUseAccelerate
-        ? basePrisma.$extends(prismaExtension).$extends(withAccelerate())
-        : basePrisma.$extends(prismaExtension);
-      prismaReplica = currentUseAccelerate
-        ? basePrismaReplica.$extends(prismaExtension).$extends(withAccelerate())
-        : basePrismaReplica.$extends(prismaExtension);
+      prisma = withExtensions(basePrisma, currentUseAccelerate);
+      prismaReplica = withExtensions(basePrismaReplica, currentUseAccelerate);
       await Promise.all([basePrisma.$connect(), basePrismaReplica.$connect()]);
       if (attempt > 1) {
         logger.info("[database] Connected after retry", { attempt });

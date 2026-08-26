@@ -13,7 +13,13 @@ const SAVINGS_VAULT_EFFECT_TYPES = [
   "contract_credited",
   "contract_debited",
   "contract_effect",
-];
+] as const;
+
+type SavingsVaultEffectType = (typeof SAVINGS_VAULT_EFFECT_TYPES)[number];
+
+function isSavingsVaultEffectType(type: string): type is SavingsVaultEffectType {
+  return (SAVINGS_VAULT_EFFECT_TYPES as readonly string[]).includes(type);
+}
 
 export async function startSavingsVaultEventListener(): Promise<void> {
   const contractId = getContractAddresses().savingsVault;
@@ -26,12 +32,22 @@ export async function startSavingsVaultEventListener(): Promise<void> {
 
   const handler = async (event: ContractEvent): Promise<void> => {
     try {
+      // listenToContractEvents (below) already filters to SAVINGS_VAULT_EFFECT_TYPES
+      // before invoking this handler, so this should be unreachable — narrow
+      // explicitly anyway rather than casting past the compiler.
+      if (!isSavingsVaultEffectType(event.type)) {
+        logger.warn("Savings vault event with unexpected type reached handler", {
+          type: event.type,
+        });
+        return;
+      }
+
       const validatedEvent = {
         contractId: event.contractId,
         type: event.type,
         data: event.data || {},
         ledger: event.ledger,
-        timestamp: event.timestamp || new Date().toISOString(),
+        timestamp: new Date(event.timestamp || Date.now()).toISOString(),
       };
 
       await savingsVaultEventProducer.publish(validatedEvent);
@@ -51,7 +67,7 @@ export async function startSavingsVaultEventListener(): Promise<void> {
 
   eventListener.listenToContractEvents(
     contractId,
-    SAVINGS_VAULT_EFFECT_TYPES,
+    [...SAVINGS_VAULT_EFFECT_TYPES],
     handler,
   );
   logger.info("Savings vault event listener registered with validation", {

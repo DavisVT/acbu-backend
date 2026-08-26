@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { Prisma } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import { prisma } from "../../config/database";
 import { AppError } from "../../middleware/errorHandler";
@@ -101,7 +102,7 @@ async function createBillsWebhookRecord(
         currency: event.currency,
         reason: event.reason ?? null,
         raw_payload: event.rawPayload ?? null,
-      },
+      } as unknown as Prisma.InputJsonValue,
       status: "processed",
     },
   });
@@ -177,7 +178,7 @@ export async function payBill(
         product_name: product.name,
         customer_reference: request.customerReference,
         metadata: request.metadata ?? null,
-      },
+      } as unknown as Prisma.InputJsonValue,
       rateSnapshot: {
         provider: provider.providerId,
         organizationId: request.organizationId ?? null,
@@ -242,7 +243,7 @@ export async function payBill(
           dispatch_status: providerResult.dispatchStatus,
           dispatched_at: new Date().toISOString(),
           provider_response: providerResult.rawResponse ?? null,
-        },
+        } as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -356,7 +357,7 @@ export async function reconcileBillsWebhook(event: BillsWebhookEvent): Promise<{
     webhook_reason: event.reason ?? null,
     webhook_received_at: new Date().toISOString(),
     webhook_payload: event.rawPayload ?? null,
-  };
+  } as unknown as Prisma.InputJsonValue;
 
   await prisma.transaction.update({
     where: { id: transaction.id },

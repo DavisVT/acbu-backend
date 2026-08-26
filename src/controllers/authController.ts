@@ -4,7 +4,6 @@ import { AuthRequest } from "../middleware/auth";
 import {
   issueAdminKey,
   issueBreakGlassKey,
-  issueRefreshToken,
   listPrivilegedKeys,
   refreshAccessToken,
   requestAdminMfaChallenge,

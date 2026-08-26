@@ -250,6 +250,8 @@ export async function resolveUserByIdentifier(identifier: string) {
       twoFaMethod: true,
       failedSigninAttempts: true,
       lockoutUntil: true,
+      actorType: true,
+      organizationId: true,
     },
   });
 
@@ -258,6 +260,10 @@ export async function resolveUserByIdentifier(identifier: string) {
       id: "dummy-id",
       passcodeHash: DUMMY_HASH,
       twoFaMethod: null,
+      failedSigninAttempts: 0,
+      lockoutUntil: null,
+      actorType: "retail",
+      organizationId: null,
       isDummy: true,
     };
   }
@@ -496,6 +502,8 @@ export async function verify2fa(
       totpSecretEncrypted: true,
       lockoutUntil: true,
       failedSigninAttempts: true,
+      actorType: true,
+      organizationId: true,
     },
   });
   if (!user || !user.twoFaMethod) throw new Error("Invalid credentials"); // Uniform message

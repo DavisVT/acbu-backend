@@ -9,11 +9,12 @@
  * 5. Emit audit logs for all policy changes
  */
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/database";
 import { logger } from "../../config/logger";
 import { basketService } from "../basket";
 import { reserveTracker } from "../reserve/ReserveTracker";
-import { auditService } from "../audit";
+import { logAudit } from "../audit";
 import { Decimal } from "@prisma/client/runtime/library";
 
 const DRIFT_THRESHOLD_PCT = 2; // Trigger audit if drift exceeds 2%
@@ -76,7 +77,6 @@ export class WeightDriftAuditService {
         const recommendation = this.generateRecommendation(
           currency,
           policyWeight,
-          actualWeight,
           driftPercent,
         );
 
@@ -127,7 +127,7 @@ export class WeightDriftAuditService {
           currenciesExceedingThreshold: report.currenciesExceedingThreshold,
           maxDriftPercent: new Decimal(report.maxDriftPercent),
           status: "pending",
-          diffReport: report,
+          diffReport: report as unknown as Prisma.InputJsonValue,
           createdBy,
         },
       });
@@ -148,7 +148,7 @@ export class WeightDriftAuditService {
       }
 
       // Emit audit log for audit creation
-      await auditService.logAuditEntry({
+      await logAudit({
         eventType: "WEIGHT_DRIFT_AUDIT_CREATED",
         entityType: "WeightDriftAudit",
         entityId: auditRecord.id,
@@ -171,7 +171,7 @@ export class WeightDriftAuditService {
       return {
         ...report,
         auditId: auditRecord.id,
-        status: "pending",
+        status: "pending" as const,
       };
     });
 
@@ -208,7 +208,7 @@ export class WeightDriftAuditService {
       });
 
       // Emit audit log for approval
-      await auditService.logAuditEntry({
+      await logAudit({
         eventType: "WEIGHT_DRIFT_AUDIT_APPROVED",
         entityType: "WeightDriftAudit",
         entityId: auditId,
@@ -258,7 +258,7 @@ export class WeightDriftAuditService {
       });
 
       // Emit audit log for rejection
-      await auditService.logAuditEntry({
+      await logAudit({
         eventType: "WEIGHT_DRIFT_AUDIT_REJECTED",
         entityType: "WeightDriftAudit",
         entityId: auditId,
@@ -324,7 +324,6 @@ export class WeightDriftAuditService {
   private generateRecommendation(
     currency: string,
     policyWeight: number,
-    actualWeight: number,
     driftPercent: number,
   ): string {
     if (Math.abs(driftPercent) <= 0.5) {

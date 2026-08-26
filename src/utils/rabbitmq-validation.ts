@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../config/logger';
-import { getRabbitMQChannel, QUEUES } from '../config/rabbitmq';
+import { getRabbitMQChannel } from '../config/rabbitmq';
 import { QUEUE_SCHEMAS, MessageEnvelopeSchema, MessageEnvelope } from '../types/rabbitmq-schemas';
 
 export class MessageValidationError extends Error {

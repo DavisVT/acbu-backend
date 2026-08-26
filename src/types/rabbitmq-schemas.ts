@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { QUEUES } from '../config/rabbitmq';
 
 // ===================== SHARED BASE SCHEMAS =====================
 
