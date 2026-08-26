@@ -2,11 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import rateLimit from "express-rate-limit";
 import { config } from "../config/env";
 import { getMongoDB } from "../config/mongodb";
-import type {
-  ClientRateLimitInfo,
-  Options as RateLimitOptions,
-  Store,
-} from "express-rate-limit";
+import type { ClientRateLimitInfo, Options as RateLimitOptions, Store } from "express-rate-limit";
 import { AuthRequest } from "./auth";
 import { cacheService, sanitizeKey } from "../utils/cache";
 import { logger } from "../config/logger";
@@ -47,10 +43,7 @@ const fallbackMetrics = {
   lastFailureAt: null as number | null,
 };
 
-const incrementFallback = (
-  key: string,
-  windowMs: number,
-): { count: number } => {
+const incrementFallback = (key: string, windowMs: number): { count: number } => {
   const now = Date.now();
   const existing = fallbackRateLimitStore.get(key);
   if (!existing || existing.expiresAt <= now) {
@@ -199,10 +192,13 @@ class MongoRateLimitStore implements Store {
         },
       );
     } catch (error) {
-      logger.warn("MongoRateLimitStore.decrement failed, skipping (in-memory fallback has no decrement)", {
-        namespace: this.prefix,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "MongoRateLimitStore.decrement failed, skipping (in-memory fallback has no decrement)",
+        {
+          namespace: this.prefix,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
   }
 
@@ -332,12 +328,10 @@ export const apiKeyRateLimiter = async (
   try {
     // Atomic increment with cap — MongoDB only increments when count < max.
     // Returns null when the cap is reached, no separate count check needed.
-    const cached = await cacheService.increment<{ count: number }>(
-      cacheKey,
-      "count",
-      1,
-      { ttl: windowMs / 1000, max: maxRequests },
-    );
+    const cached = await cacheService.increment<{ count: number }>(cacheKey, "count", 1, {
+      ttl: windowMs / 1000,
+      max: maxRequests,
+    });
 
     // Success - record for circuit breaker
     circuitBreaker.recordSuccess();
@@ -394,6 +388,16 @@ export const authRateLimiter = createRateLimiter(
 );
 
 /**
+ * Rate limiter for admin endpoints
+ */
+export const adminRateLimiter = createRateLimiter(
+  config.rateLimitWindowMs,
+  config.rateLimitMaxRequests,
+  "ip",
+  "admin",
+);
+
+/**
  * Per-user/IP rate limiter for sensitive auth endpoints: 2FA verify, passcode reset.
  * Fixes #269 — brute-force of 2FA tokens and passcodes is possible at line speed
  * when only an IP-based limiter is applied.
@@ -409,11 +413,7 @@ export const authRateLimiter = createRateLimiter(
 const TWO_FA_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const TWO_FA_MAX_REQUESTS = 5;
 
-export const twoFaRateLimiter = (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction,
-): void => {
+export const twoFaRateLimiter = (req: AuthRequest, res: Response, next: NextFunction): void => {
   // Extract a user-scoped identifier from the request body.
   // For /signin: body.identifier (username/email/phone)
   // For /signin/verify-2fa: body.challenge_token (contains userId in jti prefix)
@@ -421,8 +421,7 @@ export const twoFaRateLimiter = (
   const body = (req.body ?? {}) as Record<string, unknown>;
   const userHint =
     (typeof body.identifier === "string" && body.identifier.slice(0, 32)) ||
-    (typeof body.challenge_token === "string" &&
-      body.challenge_token.slice(-16)) ||
+    (typeof body.challenge_token === "string" && body.challenge_token.slice(-16)) ||
     (typeof body.email === "string" && body.email.slice(0, 32)) ||
     "anon";
 
@@ -445,8 +444,7 @@ export const twoFaRateLimiter = (
     res.status(429).json({
       error: {
         code: "RATE_LIMIT_EXCEEDED",
-        message:
-          "Too many authentication attempts. Please wait 15 minutes before trying again.",
+        message: "Too many authentication attempts. Please wait 15 minutes before trying again.",
       },
     });
     return;
@@ -458,11 +456,7 @@ export const twoFaRateLimiter = (
 /**
  * Middleware to inject fallback state into request context for downstream logging
  */
-export const injectFallbackState = (
-  req: AuthRequest,
-  _res: Response,
-  next: NextFunction,
-): void => {
+export const injectFallbackState = (req: AuthRequest, _res: Response, next: NextFunction): void => {
   (req as any).rateLimiterState = {
     circuitState: circuitBreaker.getState(),
     isFallback: !circuitBreaker.canExecute(),

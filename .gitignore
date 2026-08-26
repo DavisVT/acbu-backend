@@ -46,3 +46,10 @@ temp/
 heapdumps/
 *.heapsnapshot
 # Sensitive architecture and security docs
+
+# Audit artifacts
+audit/reports/*.tmp
+audit/reports/*.log
+!audit/reports/*.txt
+!audit/reports/*.json
+!audit/reports/last-run.txt

@@ -12,6 +12,7 @@ on:
 jobs:
   snyk-scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
@@ -41,7 +42,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.should_run == 'true'
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Install dependencies

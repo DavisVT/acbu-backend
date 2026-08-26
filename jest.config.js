@@ -18,6 +18,12 @@ module.exports = {
   coverageDirectory: "coverage",
   coverageReporters: ["text", "lcov", "html"],
   coverageThreshold: {
+    global: {
+      statements: 45,
+      branches: 35,
+      functions: 45,
+      lines: 45,
+    },
     "./src/services/transfer/": {
       statements: 70,
       branches: 60,
