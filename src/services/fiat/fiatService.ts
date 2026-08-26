@@ -98,7 +98,7 @@ export async function getBankAccounts(userId: string): Promise<FiatAccountView[]
         userId,
         type: "mint",
         status: "completed",
-        localCurrency: { in: BASKET_CURRENCIES },
+        localCurrency: { in: [...BASKET_CURRENCIES] },
         localAmount: { not: null },
         rateSnapshot: { path: ["source"], equals: "admin_drip_demo_fiat" },
       },
@@ -109,7 +109,7 @@ export async function getBankAccounts(userId: string): Promise<FiatAccountView[]
       },
     }),
     prisma.oracleRate.findMany({
-      where: { currency: { in: BASKET_CURRENCIES } },
+      where: { currency: { in: [...BASKET_CURRENCIES] } },
       orderBy: { timestamp: "desc" },
       distinct: ["currency"],
       select: { currency: true, rateUsd: true },

@@ -34,8 +34,13 @@ export class StellarClient {
   private network: "testnet" | "mainnet";
   private networkPassphrase: string;
   private keypair: Keypair | null = null;
-  private treasuryAccountId: string | null = null;
-  readonly horizonBreaker = new CircuitBreaker({ failureThreshold: 3, cooldownMs: 30_000, successThreshold: 2 });
+  /** Public key of the configured treasury account, when a secret key is provided. */
+  private treasuryAccountId?: string;
+  readonly horizonBreaker = new CircuitBreaker({
+    failureThreshold: 3,
+    cooldownMs: 30_000,
+    successThreshold: 2,
+  });
 
   constructor(cfg?: Partial<StellarNetworkConfig>) {
     const network = (cfg?.network ?? config.stellar.network) as "testnet" | "mainnet";

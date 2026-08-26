@@ -63,7 +63,7 @@ jobs:
             targets: ''
             needs-token-wasm: 'false'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: Pi-Defi-world/${{ matrix.repo.name }}
           ref: ${{ matrix.repo.ref }}

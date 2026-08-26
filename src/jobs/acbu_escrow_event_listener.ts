@@ -7,6 +7,16 @@ import { logger } from "../config/logger";
 import { escrowEventProducer } from "./producers";
 import { extractAndValidateTxHash } from "../services/stellar/txHashValidation";
 
+const ESCROW_EFFECT_TYPES = [
+  "contract_credited",
+  "contract_debited",
+  "contract_effect",
+] as const;
+
+type EscrowEffectType = (typeof ESCROW_EFFECT_TYPES)[number];
+
+function isEscrowEffectType(type: string): type is EscrowEffectType {
+  return (ESCROW_EFFECT_TYPES as readonly string[]).includes(type);
 const ESCROW_EFFECT_TYPES = ["contract_credited", "contract_debited", "contract_effect"];
 
 function sanitizeEventData(
@@ -32,6 +42,11 @@ export async function startEscrowEventListener(): Promise<void> {
 
   const handler = async (event: ContractEvent): Promise<void> => {
     try {
+      // listenToContractEvents (below) already filters to ESCROW_EFFECT_TYPES
+      // before invoking this handler, so this should be unreachable — narrow
+      // explicitly anyway rather than casting past the compiler.
+      if (!isEscrowEffectType(event.type)) {
+        logger.warn("Escrow event with unexpected type reached handler", {
       const rawData = (event.data || {}) as Record<string, unknown>;
       const { txHash, valid } = extractAndValidateTxHash(rawData);
 
@@ -51,7 +66,7 @@ export async function startEscrowEventListener(): Promise<void> {
         type: event.type,
         data: sanitizedData,
         ledger: event.ledger,
-        timestamp: event.timestamp || new Date().toISOString(),
+        timestamp: new Date(event.timestamp || Date.now()).toISOString(),
       };
 
       await escrowEventProducer.publish(validatedEvent);
@@ -69,6 +84,11 @@ export async function startEscrowEventListener(): Promise<void> {
     }
   };
 
+  eventListener.listenToContractEvents(
+    contractId,
+    [...ESCROW_EFFECT_TYPES],
+    handler,
+  );
   eventListener.listenToContractEvents(contractId, ESCROW_EFFECT_TYPES, handler);
   logger.info("Escrow event listener registered with validation", {
     contractId,

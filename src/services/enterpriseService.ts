@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database";
 import { config } from "../config/env";
 import { logger } from "../config/logger";
@@ -294,7 +295,7 @@ export async function processBulkTransfer(
       completedAt: new Date(),
       successCount,
       failureCount,
-      failureReport,
+      failureReport: failureReport as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -336,6 +337,6 @@ export async function getBulkTransferJob(jobId: string, organizationId: string) 
     status: job.status as BulkTransferJobStatus,
     createdAt: job.createdAt.toISOString(),
     completedAt: job.completedAt?.toISOString(),
-    failureReport: (job.failureReport as BulkTransferRowResult[]) ?? [],
+    failureReport: (job.failureReport as unknown as BulkTransferRowResult[]) ?? [],
   };
 }

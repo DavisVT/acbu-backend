@@ -7,6 +7,16 @@ import { logger } from "../config/logger";
 import { lendingPoolEventProducer } from "./producers";
 import { extractAndValidateTxHash } from "../services/stellar/txHashValidation";
 
+const LENDING_POOL_EFFECT_TYPES = [
+  "contract_credited",
+  "contract_debited",
+  "contract_effect",
+] as const;
+
+type LendingPoolEffectType = (typeof LENDING_POOL_EFFECT_TYPES)[number];
+
+function isLendingPoolEffectType(type: string): type is LendingPoolEffectType {
+  return (LENDING_POOL_EFFECT_TYPES as readonly string[]).includes(type);
 const LENDING_POOL_EFFECT_TYPES = ["contract_credited", "contract_debited", "contract_effect"];
 
 function sanitizeEventData(
@@ -32,6 +42,11 @@ export async function startLendingPoolEventListener(): Promise<void> {
 
   const handler = async (event: ContractEvent): Promise<void> => {
     try {
+      // listenToContractEvents (below) already filters to LENDING_POOL_EFFECT_TYPES
+      // before invoking this handler, so this should be unreachable — narrow
+      // explicitly anyway rather than casting past the compiler.
+      if (!isLendingPoolEffectType(event.type)) {
+        logger.warn("Lending pool event with unexpected type reached handler", {
       const rawData = (event.data || {}) as Record<string, unknown>;
       const { txHash, valid } = extractAndValidateTxHash(rawData);
 
@@ -51,7 +66,7 @@ export async function startLendingPoolEventListener(): Promise<void> {
         type: event.type,
         data: sanitizedData,
         ledger: event.ledger,
-        timestamp: event.timestamp || new Date().toISOString(),
+        timestamp: new Date(event.timestamp || Date.now()).toISOString(),
       };
 
       await lendingPoolEventProducer.publish(validatedEvent);
@@ -69,7 +84,11 @@ export async function startLendingPoolEventListener(): Promise<void> {
     }
   };
 
-  eventListener.listenToContractEvents(contractId, LENDING_POOL_EFFECT_TYPES, handler);
+  eventListener.listenToContractEvents(
+    contractId,
+    [...LENDING_POOL_EFFECT_TYPES],
+    handler,
+  );
   logger.info("Lending pool event listener registered with validation", {
     contractId,
     effectTypes: LENDING_POOL_EFFECT_TYPES,
