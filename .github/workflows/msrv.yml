@@ -75,7 +75,7 @@ jobs:
           targets: ${{ matrix.repo.targets }}
 
       - name: Cache cargo
-        uses: actions/cache@v3
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
