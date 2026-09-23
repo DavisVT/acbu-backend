@@ -4,7 +4,10 @@ import {
   listPrivilegedKeys,
   requestAdminMfaChallenge,
   revokePrivilegedKey,
+  verifyCaptcha,
 } from "./authService";
+import axios from "axios";
+import { config } from "../../config/env";
 import { prisma } from "../../config/database";
 import { generateApiKey } from "../../middleware/auth";
 import { verifyChallengeToken, signChallengeToken } from "../../utils/jwt";
@@ -69,6 +72,8 @@ jest.mock("otplib", () => ({
     check: jest.fn(),
   },
 }));
+
+jest.mock("axios");
 
 jest.mock("../../config/rabbitmq", () => ({
   getRabbitMQChannel: jest.fn(),
@@ -280,5 +285,42 @@ describe("authService privileged key coverage", () => {
         reason: "Session ended",
       }),
     );
+  });
+});
+
+describe("verifyCaptcha", () => {
+  const originalSecret = config.auth.captchaSecret;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    config.auth.captchaSecret = "turnstile-secret";
+  });
+  afterAll(() => {
+    config.auth.captchaSecret = originalSecret;
+  });
+
+  it("returns true when Turnstile reports success", async () => {
+    (axios.post as jest.Mock).mockResolvedValue({ data: { success: true } });
+    await expect(verifyCaptcha("tok", "1.2.3.4")).resolves.toBe(true);
+    const body = (axios.post as jest.Mock).mock.calls[0][1] as URLSearchParams;
+    expect(body.get("secret")).toBe("turnstile-secret");
+    expect(body.get("response")).toBe("tok");
+    expect(body.get("remoteip")).toBe("1.2.3.4");
+  });
+
+  it("returns false when Turnstile rejects the token", async () => {
+    (axios.post as jest.Mock).mockResolvedValue({ data: { success: false } });
+    await expect(verifyCaptcha("bad")).resolves.toBe(false);
+  });
+
+  it("fails closed when the request errors", async () => {
+    (axios.post as jest.Mock).mockRejectedValue(new Error("network"));
+    await expect(verifyCaptcha("tok")).resolves.toBe(false);
+  });
+
+  it("fails closed without calling Turnstile when secret is unset", async () => {
+    config.auth.captchaSecret = "";
+    await expect(verifyCaptcha("tok")).resolves.toBe(false);
+    expect(axios.post).not.toHaveBeenCalled();
   });
 });
