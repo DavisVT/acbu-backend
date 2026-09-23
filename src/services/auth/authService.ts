@@ -5,6 +5,7 @@
  * OTP (sms/email) is created and published to RabbitMQ OTP_SEND for delivery.
  */
 import bcrypt from "bcrypt";
+import axios from "axios";
 import { totp } from "otplib";
 import { randomUUID } from "crypto";
 import { config } from "../../config/env";
@@ -17,10 +18,7 @@ import { QUEUES } from "../../config/rabbitmq";
 import { ensureWalletForUser } from "../wallet/walletService";
 import { logAudit } from "../audit";
 import { authBruteGuard } from "../../utils/authBruteGuard";
-import {
-  PermissionsArraySchema,
-  PermissionScope,
-} from "../../types/permissions";
+import { PermissionsArraySchema, PermissionScope } from "../../types/permissions";
 import {
   UsernameTakenError,
   InvalidCredentialsError,
@@ -44,8 +42,7 @@ import {
   ValidationError,
 } from "../../errors/index";
 
-const DUMMY_HASH =
-  "$2a$10$CwTycUXWue0Thq9StjUM0uEnOTWj2XOTl0pypEQuA7y2h2H6jX.m2"; // hash for 'dummy'
+const DUMMY_HASH = "$2a$10$CwTycUXWue0Thq9StjUM0uEnOTWj2XOTl0pypEQuA7y2h2H6jX.m2"; // hash for 'dummy'
 
 export interface SignupParams {
   username: string;
@@ -136,12 +133,7 @@ const ADMIN_TIER = "enterprise";
 const BREAK_GLASS_DEFAULT_TTL_MINUTES = 15;
 const BREAK_GLASS_MAX_TTL_MINUTES = 60;
 const REFRESH_TOKEN_EXPIRY_DAYS = 30;
-const ADMIN_SCOPES = [
-  "p2p:admin",
-  "sme:admin",
-  "gateway:admin",
-  "enterprise:admin",
-] as const;
+const ADMIN_SCOPES = ["p2p:admin", "sme:admin", "gateway:admin", "enterprise:admin"] as const;
 
 function normalizeIdentifier(s: string): {
   kind: "username" | "email" | "phone";
@@ -175,9 +167,7 @@ function validateAdminScopes(scopes: string[]): PermissionScope[] {
     const invalid = parsed.error.errors.map((e) => e.message).join(", ");
     throw new ValidationError(`Invalid permission scope(s): ${invalid}`);
   }
-  const adminOnly = parsed.data.filter((s) =>
-    (ADMIN_SCOPES as readonly string[]).includes(s),
-  );
+  const adminOnly = parsed.data.filter((s) => (ADMIN_SCOPES as readonly string[]).includes(s));
   if (adminOnly.length === 0) {
     throw new AdminScopeRequiredError();
   }
@@ -187,13 +177,9 @@ function validateAdminScopes(scopes: string[]): PermissionScope[] {
 async function publishOtp(channel: "sms" | "email", to: string, code: string) {
   const ch = getRabbitMQChannel();
   await ch.assertQueue(QUEUES.OTP_SEND, { durable: true });
-  ch.sendToQueue(
-    QUEUES.OTP_SEND,
-    Buffer.from(JSON.stringify({ channel, to, code })),
-    {
-      persistent: true,
-    },
-  );
+  ch.sendToQueue(QUEUES.OTP_SEND, Buffer.from(JSON.stringify({ channel, to, code })), {
+    persistent: true,
+  });
 }
 
 async function verifyMfaChallengeForUser(
@@ -291,18 +277,11 @@ export async function resolveUserByIdentifier(identifier: string) {
  * Simple account creation: username + passcode. No email. Stellar wallet is created on first signin.
  */
 export async function signup(params: SignupParams): Promise<SignupResult> {
-  const username = (params.username || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s/g, "");
+  const username = (params.username || "").trim().toLowerCase().replace(/\s/g, "");
   if (!username || username.length > 64) {
     throw new ValidationError("Username is required and must be at most 64 characters");
   }
-  if (
-    !params.passcode ||
-    params.passcode.length < 8 ||
-    params.passcode.length > 64
-  ) {
+  if (!params.passcode || params.passcode.length < 8 || params.passcode.length > 64) {
     throw new ValidationError("Passcode must be 8–64 characters");
   }
   const existing = await prisma.user.findFirst({
@@ -337,6 +316,28 @@ export async function signup(params: SignupParams): Promise<SignupResult> {
   };
 }
 
+/** Verify a Cloudflare Turnstile token server-side. Fails closed when the secret is unset or the call errors. */
+export async function verifyCaptcha(token: string, ip?: string): Promise<boolean> {
+  const secret = config.auth.captchaSecret;
+  if (!secret) {
+    logger.error("Captcha verification failed: CAPTCHA_SECRET not configured");
+    return false;
+  }
+  try {
+    const body = new URLSearchParams({ secret, response: token });
+    if (ip) body.set("remoteip", ip);
+    const { data } = await axios.post<{ success?: boolean }>(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      body,
+      { timeout: 5000 },
+    );
+    return data?.success === true;
+  } catch (err) {
+    logger.warn("Captcha verification request failed", { err });
+    return false;
+  }
+}
+
 /**
  * Signin: verify identifier + passcode. If 2FA on, return challenge_token (and send OTP via RabbitMQ when sms/email); else issue api_key.
  */
@@ -352,7 +353,9 @@ export async function signin(params: SigninParams): Promise<SigninResult> {
     throw new CaptchaRequiredError();
   }
 
-  // TODO: Verify captchaToken here if provided
+  if (captchaToken && !(await verifyCaptcha(captchaToken, ip))) {
+    throw new CaptchaRequiredError();
+  }
 
   const user = await resolveUserByIdentifier(identifier);
 
@@ -380,9 +383,7 @@ export async function signin(params: SigninParams): Promise<SigninResult> {
       where: { id: user.id },
       data: {
         failedSigninAttempts: failedAttempts,
-        lockoutUntil: isLockout
-          ? new Date(Date.now() + config.signinLockoutDurationMs)
-          : null,
+        lockoutUntil: isLockout ? new Date(Date.now() + config.signinLockoutDurationMs) : null,
       },
     });
 
@@ -496,9 +497,7 @@ export async function signin(params: SigninParams): Promise<SigninResult> {
 /**
  * Verify 2FA and issue api_key. challenge_token is JWT; code is TOTP or OTP.
  */
-export async function verify2fa(
-  params: Verify2faParams,
-): Promise<Verify2faResult> {
+export async function verify2fa(params: Verify2faParams): Promise<Verify2faResult> {
   const { challenge_token, code, ip } = params;
   const payload = verifyChallengeToken(challenge_token);
 
@@ -533,9 +532,7 @@ export async function verify2fa(
       where: { id: user.id },
       data: {
         failedSigninAttempts: failedAttempts,
-        lockoutUntil: isLockout
-          ? new Date(Date.now() + config.signinLockoutDurationMs)
-          : null,
+        lockoutUntil: isLockout ? new Date(Date.now() + config.signinLockoutDurationMs) : null,
       },
     });
   };
@@ -757,9 +754,7 @@ export async function issueBreakGlassKey(
   }
 
   const permissions =
-    params.permissions.length > 0
-      ? validateAdminScopes(params.permissions)
-      : [...ADMIN_SCOPES];
+    params.permissions.length > 0 ? validateAdminScopes(params.permissions) : [...ADMIN_SCOPES];
 
   await verifyMfaChallengeForUser(user.id, params.challengeToken, params.code);
 
@@ -899,8 +894,8 @@ export interface RevokeRefreshTokenParams {
 }
 
 function generateSecureRefreshToken(): string {
-  const bytes = Buffer.from(randomUUID()).toString('base64');
-  return bytes + Buffer.from(randomUUID()).toString('base64');
+  const bytes = Buffer.from(randomUUID()).toString("base64");
+  return bytes + Buffer.from(randomUUID()).toString("base64");
 }
 
 async function hashRefreshToken(token: string): Promise<string> {
@@ -918,9 +913,7 @@ export async function issueRefreshToken(
   const token = generateSecureRefreshToken();
   const tokenHash = await hashRefreshToken(token);
   const tokenFamilyId = randomUUID();
-  const expiresAt = new Date(
-    Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-  );
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
   await prisma.refreshToken.create({
     data: {
@@ -1006,9 +999,7 @@ export async function refreshAccessToken(
   const newToken = generateSecureRefreshToken();
   const newTokenHash = await hashRefreshToken(newToken);
   const newTokenFamilyId = randomUUID();
-  const newExpiresAt = new Date(
-    Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-  );
+  const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
   await prisma.refreshToken.create({
     data: {
@@ -1049,9 +1040,7 @@ export async function refreshAccessToken(
 /**
  * Revoke a refresh token and its entire family.
  */
-export async function revokeRefreshToken(
-  params: RevokeRefreshTokenParams,
-): Promise<{ ok: true }> {
+export async function revokeRefreshToken(params: RevokeRefreshTokenParams): Promise<{ ok: true }> {
   const { refresh_token } = params;
 
   const tokenHash = await hashRefreshToken(refresh_token);
