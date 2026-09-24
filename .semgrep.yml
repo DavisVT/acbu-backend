@@ -1,0 +1,77 @@
+rules:
+  - id: no-hardcoded-secrets
+    languages:
+      - typescript
+      - javascript
+    message: >-
+      Hardcoded secrets detected. Use environment variables or a secrets
+      manager instead of embedding credentials in source code.
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: |
+              const $KEY = "..."
+          - pattern: |
+              let $KEY = "..."
+          - pattern: |
+              var $KEY = "..."
+      - metavariable-regex:
+          metavariable: $KEY
+          regex: (?i)(password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|auth[_-]?token)
+      - pattern-not-regex: process\.env\.[A-Z_]+
+
+  - id: no-eval
+    languages:
+      - typescript
+      - javascript
+    message: >-
+      Use of eval() is dangerous and can lead to code injection. Refactor to
+      avoid dynamic code execution.
+    severity: ERROR
+    patterns:
+      - pattern: eval(...)
+
+  - id: no-innerhtml
+    languages:
+      - typescript
+      - javascript
+    message: >-
+      Assigning to innerHTML can lead to XSS. Use textContent or a safe
+      sanitization library instead.
+    severity: ERROR
+    patterns:
+      - pattern: $X.innerHTML = $Y
+
+  - id: no-sql-string-concat
+    languages:
+      - typescript
+      - javascript
+    message: >-
+      SQL query built via string concatenation is vulnerable to SQL injection.
+      Use parameterized queries or an ORM.
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $DB.query("..." + $VAR + "...")
+          - pattern: |
+              $DB.execute("..." + $VAR + "...")
+          - pattern: |
+              $DB.raw("..." + $VAR + "...")
+
+  - id: no-command-injection
+    languages:
+      - typescript
+      - javascript
+    message: >-
+      Command execution with unsanitized input can lead to command injection.
+      Validate and sanitize all user input before passing to exec/spawn.
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: exec($CMD)
+          - pattern: execSync($CMD)
+          - pattern: spawn($CMD, ...)
+      - metavariable-regex:
+          metavariable: $CMD
+          regex: .*\+.*

@@ -35,8 +35,4 @@ export interface FintechProvider {
   ): Promise<DisburseResult>;
 }
 
-export type FintechProviderId =
-  | "flutterwave"
-  | "paystack"
-  | "mtn_momo"
-  | "simulated";
+export type FintechProviderId = "flutterwave" | "paystack" | "mtn_momo" | "simulated";

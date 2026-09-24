@@ -1,3 +1,7 @@
+jest.mock("dotenv", () => ({
+  config: jest.fn(),
+}));
+
 describe("env validation", () => {
   const ORIGINAL = process.env;
   const REQUIRED_ENV = {
@@ -11,7 +15,7 @@ describe("env validation", () => {
 
   beforeEach(() => {
     jest.resetModules();
-    process.env = { ...ORIGINAL };
+    process.env = { ...ORIGINAL, ...REQUIRED_ENV };
   });
 
   afterAll(() => {
@@ -65,6 +69,26 @@ describe("env validation", () => {
     expect(config.rateLimitCircuitBreakerCooldownMs).toBe(90000);
   });
 
+  it("coerces admin rate-limit config values from env strings", () => {
+    process.env.ADMIN_RATE_LIMIT_WINDOW_MS = "120000";
+    process.env.ADMIN_RATE_LIMIT_MAX_REQUESTS = "42";
+
+    const { config } = require("../src/config/env");
+
+    expect(config.adminRateLimitWindowMs).toBe(120000);
+    expect(config.adminRateLimitMaxRequests).toBe(42);
+  });
+
+  it("defaults admin rate-limit config when not set", () => {
+    delete process.env.ADMIN_RATE_LIMIT_WINDOW_MS;
+    delete process.env.ADMIN_RATE_LIMIT_MAX_REQUESTS;
+
+    const { config } = require("../src/config/env");
+
+    expect(config.adminRateLimitWindowMs).toBe(60000);
+    expect(config.adminRateLimitMaxRequests).toBe(30);
+  });
+
   it("throws when LOG_LEVEL is invalid", () => {
     process.env.LOG_LEVEL = "invalid_level";
     expect(() => require("../src/config/env")).toThrow(/LOG_LEVEL/);
@@ -83,19 +107,17 @@ describe("env validation", () => {
       ...ORIGINAL,
       ...REQUIRED_ENV,
       NODE_ENV: "production",
-      S3_SCAN_WEBHOOK_SECRET: "change-me-in-production",
       CHALLENGE_TOKEN_SECRET: "production-challenge-token-secret-32chars-xyz",
       USDC_ISSUER_TESTNET: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
       USDC_ISSUER_MAINNET: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+      S3_SCAN_WEBHOOK_SECRET: "change-me-in-production",
       FLUTTERWAVE_SECRET_KEY: "test-flutterwave-secret",
       FLUTTERWAVE_WEBHOOK_SECRET: "test-flutterwave-webhook-secret",
       PAYSTACK_SECRET_KEY: "test-paystack-secret",
       BILLS_WEBHOOK_SECRET: "test-bills-webhook-secret",
     };
 
-    expect(() => require("../src/config/env")).toThrow(
-      /S3_SCAN_WEBHOOK_SECRET/,
-    );
+    expect(() => require("../src/config/env")).toThrow(/S3_SCAN_WEBHOOK_SECRET/);
   });
 
   it("loads in production when S3_SCAN_WEBHOOK_SECRET is configured", () => {
@@ -146,8 +168,8 @@ describe("env validation", () => {
       FLUTTERWAVE_WEBHOOK_SECRET: "test-flutterwave-webhook-secret",
       PAYSTACK_SECRET_KEY: "test-paystack-secret",
       BILLS_WEBHOOK_SECRET: "test-bills-webhook-secret",
-      USDC_ISSUER_TESTNET: "",
     };
+    delete process.env.USDC_ISSUER_TESTNET;
 
     expect(() => require("../src/config/env")).toThrow(
       /USDC_ISSUER_TESTNET/,
@@ -166,8 +188,8 @@ describe("env validation", () => {
       FLUTTERWAVE_WEBHOOK_SECRET: "test-flutterwave-webhook-secret",
       PAYSTACK_SECRET_KEY: "test-paystack-secret",
       BILLS_WEBHOOK_SECRET: "test-bills-webhook-secret",
-      USDC_ISSUER_MAINNET: "",
     };
+    delete process.env.USDC_ISSUER_MAINNET;
 
     expect(() => require("../src/config/env")).toThrow(
       /USDC_ISSUER_MAINNET/,

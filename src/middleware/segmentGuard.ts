@@ -48,12 +48,7 @@ export function requireSegmentScope(...scopes: SegmentScope[]) {
     const permissions = req.apiKey.permissions || [];
     const hasScope = scopes.some((scope) => permissions.includes(scope));
     if (!hasScope) {
-      next(
-        new AppError(
-          `Missing segment scope. Required one of: ${scopes.join(", ")}`,
-          403,
-        ),
-      );
+      next(new AppError(`Missing segment scope. Required one of: ${scopes.join(", ")}`, 403));
       return;
     }
     next();
@@ -82,9 +77,7 @@ export function requireMinTier(minTier: UserTier) {
       return;
     }
     if (tierIdx < minIdx) {
-      next(
-        new AppError(`Insufficient tier. Required at least: ${minTier}`, 403),
-      );
+      next(new AppError(`Insufficient tier. Required at least: ${minTier}`, 403));
       return;
     }
     next();

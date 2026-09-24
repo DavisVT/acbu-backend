@@ -2,21 +2,13 @@ import { Request, Response, NextFunction } from "express";
 import rateLimit from "express-rate-limit";
 import { config } from "../config/env";
 import { getMongoDB } from "../config/mongodb";
-import type {
-  ClientRateLimitInfo,
-  Options as RateLimitOptions,
-  Store,
-} from "express-rate-limit";
+import type { ClientRateLimitInfo, Options as RateLimitOptions, Store } from "express-rate-limit";
 import { AuthRequest } from "./auth";
 import { cacheService, sanitizeKey } from "../utils/cache";
 import { logger } from "../config/logger";
 import { ErrorCodes } from "../types/errorCodes";
 import { circuitBreaker } from "../utils/circuitBreaker";
-
-type FallbackRateLimitEntry = {
-  count: number;
-  expiresAt: number;
-};
+import { getRedisClient } from "../config/redis";
 
 type RateLimitDocument = {
   key: string;
@@ -31,13 +23,11 @@ type RateLimitDocument = {
 /** Identifies which rate-limiting strategy produced a 429 response. */
 export type LimiterContext = "ip" | "api_key";
 
-const fallbackRateLimitStore = new Map<string, FallbackRateLimitEntry>();
 const RATE_LIMIT_COLLECTION = "cache";
 
 // Stricter fallback limits during cache outage (5x stricter than normal 100/min)
 const FALLBACK_MAX_REQUESTS_PER_IP = 20;
 const FALLBACK_WINDOW_MS = 60_000; // 1 minute
-const FALLBACK_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 // Metrics tracking for observability
 const fallbackMetrics = {
@@ -47,81 +37,76 @@ const fallbackMetrics = {
   lastFailureAt: null as number | null,
 };
 
-const incrementFallback = (
-  key: string,
-  windowMs: number,
-): { count: number } => {
-  const now = Date.now();
-  const existing = fallbackRateLimitStore.get(key);
-  if (!existing || existing.expiresAt <= now) {
-    const entry = { count: 1, expiresAt: now + windowMs };
-    fallbackRateLimitStore.set(key, entry);
-    return { count: entry.count };
-  }
+const incrementFallback = async (key: string, windowMs: number): Promise<{ count: number }> => {
+  try {
+    const redis = getRedisClient();
+    const count = await redis.incr(key);
 
-  existing.count += 1;
-  fallbackRateLimitStore.set(key, existing);
-  return { count: existing.count };
+    if (count === 1) {
+      await redis.expire(key, Math.ceil(windowMs / 1000));
+    }
+
+    return { count };
+  } catch (error) {
+    logger.error("Redis fallback increment failed", {
+      key,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 };
 
 /**
  * Enforce strict fallback rate limit when cache is unavailable
  * This ensures NO fail-open behavior during cache outages
  */
-const enforceFallbackLimit = (
+const enforceFallbackLimit = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction,
   maxRequests: number,
-): void => {
-  const ip = req.ip || "unknown";
+): Promise<void> => {
+  const ip = (req as any).ip || "unknown";
   const now = Date.now();
   const windowId = Math.floor(now / FALLBACK_WINDOW_MS);
   const cacheKey = `fallback:ip:${sanitizeKey(ip)}:${windowId}`;
 
-  const result = incrementFallback(cacheKey, FALLBACK_WINDOW_MS);
+  try {
+    const result = await incrementFallback(cacheKey, FALLBACK_WINDOW_MS);
 
-  if (result.count > maxRequests) {
-    fallbackMetrics.rejectionsInFallback++;
-    logger.warn("Rate limit rejected in fallback mode", {
-      ip,
-      count: result.count,
-      limit: maxRequests,
-      mode: "fallback",
+    if (result.count > maxRequests) {
+      fallbackMetrics.rejectionsInFallback++;
+      logger.warn("Rate limit rejected in fallback mode", {
+        ip,
+        count: result.count,
+        limit: maxRequests,
+        mode: "fallback",
+      });
+      res.status(429).json({
+        error: {
+          code: ErrorCodes.RATE_LIMIT_EXCEEDED,
+          error_code: ErrorCodes.RATE_LIMIT_EXCEEDED,
+          message: "Rate limit exceeded (degraded mode)",
+        },
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    logger.error("Fallback rate limiter error, denying request", {
+      error: error instanceof Error ? error.message : String(error),
     });
     res.status(429).json({
       error: {
         code: ErrorCodes.RATE_LIMIT_EXCEEDED,
         error_code: ErrorCodes.RATE_LIMIT_EXCEEDED,
-        message: "Rate limit exceeded (degraded mode)",
+        message: "Rate limit check failed",
       },
     });
-    return;
   }
-
-  next();
 };
 
-// Periodic cleanup of expired fallback entries to prevent memory leaks
-const cleanupTimer = setInterval(() => {
-  const now = Date.now();
-  let cleanedCount = 0;
-  for (const [key, entry] of fallbackRateLimitStore.entries()) {
-    if (entry.expiresAt <= now) {
-      fallbackRateLimitStore.delete(key);
-      cleanedCount++;
-    }
-  }
-  if (cleanedCount > 0) {
-    logger.debug("Cleaned up expired fallback rate limit entries", {
-      cleanedCount,
-      remainingSize: fallbackRateLimitStore.size,
-    });
-  }
-}, FALLBACK_CLEANUP_INTERVAL_MS);
-
-// Unref to prevent blocking process exit
-cleanupTimer.unref();
 
 class MongoRateLimitStore implements Store {
   public readonly localKeys = false;
@@ -138,78 +123,143 @@ class MongoRateLimitStore implements Store {
   }
 
   async increment(key: string): Promise<ClientRateLimitInfo> {
-    const db = getMongoDB();
-    const collection = db.collection<RateLimitDocument>(RATE_LIMIT_COLLECTION);
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + this.windowMs);
-    const namespacedKey = this.buildKey(key);
+    try {
+      const db = getMongoDB();
+      const collection = db.collection<RateLimitDocument>(RATE_LIMIT_COLLECTION);
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + this.windowMs);
+      const namespacedKey = this.buildKey(key);
 
-    const result = await collection.findOneAndUpdate(
-      { key: namespacedKey },
-      {
-        $inc: { "value.count": 1 },
-        $set: {
-          updatedAt: now,
-          expiresAt,
-          namespace: this.prefix,
+      const result = await collection.findOneAndUpdate(
+        { key: namespacedKey },
+        {
+          $inc: { "value.count": 1 },
+          $set: {
+            updatedAt: now,
+            expiresAt,
+            namespace: this.prefix,
+          },
+          $setOnInsert: {
+            key: namespacedKey,
+            namespace: this.prefix,
+            value: { count: 0 },
+          },
         },
-        $setOnInsert: {
-          key: namespacedKey,
-          namespace: this.prefix,
-          value: { count: 0 },
-        },
-      },
-      { upsert: true, returnDocument: "after" },
-    );
+        { upsert: true, returnDocument: "after" },
+      );
 
-    const doc = result?.value as unknown as RateLimitDocument | null;
-    const totalHits = doc?.value?.count ?? 1;
-    return {
-      totalHits,
-      resetTime: doc?.expiresAt ?? expiresAt,
-    };
+      const doc = result?.value as unknown as RateLimitDocument | null;
+      const totalHits = doc?.value?.count ?? 1;
+      return {
+        totalHits,
+        resetTime: doc?.expiresAt ?? expiresAt,
+      };
+    } catch (error) {
+      logger.error("MongoRateLimitStore.increment failed, using Redis fallback", {
+        namespace: this.prefix,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      fallbackMetrics.failuresTotal++;
+      fallbackMetrics.lastFailureAt = Date.now();
+      fallbackMetrics.fallbackActivations++;
+
+      try {
+        const fallbackKey = `${this.prefix}:${key}`;
+        const result = await incrementFallback(fallbackKey, this.windowMs);
+        return {
+          totalHits: result.count,
+          resetTime: new Date(Date.now() + this.windowMs),
+        };
+      } catch (redisError) {
+        logger.error("Redis fallback also failed, returning permissive response", {
+          error: redisError instanceof Error ? redisError.message : String(redisError),
+        });
+        throw new Error("Both MongoDB and Redis rate limiting failed");
+      }
+    }
   }
 
   async decrement(key: string): Promise<void> {
-    const db = getMongoDB();
-    const collection = db.collection<RateLimitDocument>(RATE_LIMIT_COLLECTION);
-    await collection.updateOne(
-      { key: this.buildKey(key) },
-      {
-        $inc: { "value.count": -1 },
-        $set: { updatedAt: new Date() },
-      },
-    );
+    try {
+      const db = getMongoDB();
+      const collection = db.collection<RateLimitDocument>(RATE_LIMIT_COLLECTION);
+      await collection.updateOne(
+        { key: this.buildKey(key) },
+        {
+          $inc: { "value.count": -1 },
+          $set: { updatedAt: new Date() },
+        },
+      );
+    } catch (error) {
+      logger.warn(
+        "MongoRateLimitStore.decrement failed, skipping (in-memory fallback has no decrement)",
+        {
+          namespace: this.prefix,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
   }
 
   async resetKey(key: string): Promise<void> {
-    const db = getMongoDB();
-    const collection = db.collection<RateLimitDocument>(RATE_LIMIT_COLLECTION);
-    await collection.deleteOne({ key: this.buildKey(key) });
+    try {
+      const db = getMongoDB();
+      const collection = db.collection<RateLimitDocument>(RATE_LIMIT_COLLECTION);
+      await collection.deleteOne({ key: this.buildKey(key) });
+    } catch (error) {
+      logger.warn("MongoRateLimitStore.resetKey failed", {
+        namespace: this.prefix,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      try {
+        const redis = getRedisClient();
+        await redis.del(`${this.prefix}:${key}`);
+      } catch (redisError) {
+        logger.warn("Redis resetKey also failed", {
+          error: redisError instanceof Error ? redisError.message : String(redisError),
+        });
+      }
+    }
   }
 
   async resetAll(): Promise<void> {
-    const db = getMongoDB();
-    const collection = db.collection<RateLimitDocument>(RATE_LIMIT_COLLECTION);
-    await collection.deleteMany({ namespace: this.prefix });
+    try {
+      const db = getMongoDB();
+      const collection = db.collection<RateLimitDocument>(RATE_LIMIT_COLLECTION);
+      await collection.deleteMany({ namespace: this.prefix });
+    } catch (error) {
+      logger.warn("MongoRateLimitStore.resetAll failed", {
+        namespace: this.prefix,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async get(key: string): Promise<ClientRateLimitInfo | undefined> {
-    const db = getMongoDB();
-    const collection = db.collection<RateLimitDocument>(RATE_LIMIT_COLLECTION);
-    const doc = (await collection.findOne({
-      key: this.buildKey(key),
-      expiresAt: { $gt: new Date() },
-    })) as RateLimitDocument | null;
+    try {
+      const db = getMongoDB();
+      const collection = db.collection<RateLimitDocument>(RATE_LIMIT_COLLECTION);
+      const doc = (await collection.findOne({
+        key: this.buildKey(key),
+        expiresAt: { $gt: new Date() },
+      })) as RateLimitDocument | null;
 
-    if (!doc) {
+      if (!doc) {
+        return undefined;
+      }
+
+      return {
+        totalHits: doc.value.count,
+        resetTime: doc.expiresAt,
+      };
+    } catch (error) {
+      logger.warn("MongoRateLimitStore.get failed", {
+        namespace: this.prefix,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return undefined;
     }
-
-    return {
-      totalHits: doc.value.count,
-      resetTime: doc.expiresAt,
-    };
   }
 
   private buildKey(key: string): string {
@@ -278,19 +328,17 @@ export const apiKeyRateLimiter = async (
       circuitState: circuitBreaker.getState(),
     });
     fallbackMetrics.fallbackActivations++;
-    enforceFallbackLimit(req, res, next, FALLBACK_MAX_REQUESTS_PER_IP);
+    await enforceFallbackLimit(req, res, next, FALLBACK_MAX_REQUESTS_PER_IP);
     return;
   }
 
   try {
     // Atomic increment with cap — MongoDB only increments when count < max.
     // Returns null when the cap is reached, no separate count check needed.
-    const cached = await cacheService.increment<{ count: number }>(
-      cacheKey,
-      "count",
-      1,
-      { ttl: windowMs / 1000, max: maxRequests },
-    );
+    const cached = await cacheService.increment<{ count: number }>(cacheKey, "count", 1, {
+      ttl: windowMs / 1000,
+      max: maxRequests,
+    });
 
     // Success - record for circuit breaker
     circuitBreaker.recordSuccess();
@@ -322,7 +370,7 @@ export const apiKeyRateLimiter = async (
     });
 
     fallbackMetrics.fallbackActivations++;
-    enforceFallbackLimit(req, res, next, FALLBACK_MAX_REQUESTS_PER_IP);
+    await enforceFallbackLimit(req, res, next, FALLBACK_MAX_REQUESTS_PER_IP);
   }
 };
 
@@ -347,6 +395,16 @@ export const authRateLimiter = createRateLimiter(
 );
 
 /**
+ * Rate limiter for admin endpoints
+ */
+export const adminRateLimiter = createRateLimiter(
+  config.adminRateLimitWindowMs,
+  config.adminRateLimitMaxRequests,
+  "ip",
+  "admin",
+);
+
+/**
  * Per-user/IP rate limiter for sensitive auth endpoints: 2FA verify, passcode reset.
  * Fixes #269 — brute-force of 2FA tokens and passcodes is possible at line speed
  * when only an IP-based limiter is applied.
@@ -362,60 +420,62 @@ export const authRateLimiter = createRateLimiter(
 const TWO_FA_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const TWO_FA_MAX_REQUESTS = 5;
 
-export const twoFaRateLimiter = (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction,
-): void => {
+export const twoFaRateLimiter = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   // Extract a user-scoped identifier from the request body.
   // For /signin: body.identifier (username/email/phone)
   // For /signin/verify-2fa: body.challenge_token (contains userId in jti prefix)
   // For /passcode/reset: body.identifier or body.email
-  const body = (req.body ?? {}) as Record<string, unknown>;
+  const body = ((req as any).body ?? {}) as Record<string, unknown>;
   const userHint =
     (typeof body.identifier === "string" && body.identifier.slice(0, 32)) ||
-    (typeof body.challenge_token === "string" &&
-      body.challenge_token.slice(-16)) ||
+    (typeof body.challenge_token === "string" && body.challenge_token.slice(-16)) ||
     (typeof body.email === "string" && body.email.slice(0, 32)) ||
     "anon";
 
-  const ip = req.ip || "unknown";
+  const ip = (req as any).ip || "unknown";
   const compositeKey = `2fa:${ip}:${userHint}`;
 
   const now = Date.now();
   const windowId = Math.floor(now / TWO_FA_WINDOW_MS);
   const storeKey = `${compositeKey}:${windowId}`;
 
-  const result = incrementFallback(storeKey, TWO_FA_WINDOW_MS);
+  try {
+    const result = await incrementFallback(storeKey, TWO_FA_WINDOW_MS);
 
-  if (result.count > TWO_FA_MAX_REQUESTS) {
-    logger.warn("2FA rate limit exceeded", {
-      ip,
-      userHint,
-      count: result.count,
-      limit: TWO_FA_MAX_REQUESTS,
+    if (result.count > TWO_FA_MAX_REQUESTS) {
+      logger.warn("2FA rate limit exceeded", {
+        ip,
+        userHint,
+        count: result.count,
+        limit: TWO_FA_MAX_REQUESTS,
+      });
+      res.status(429).json({
+        error: {
+          code: "RATE_LIMIT_EXCEEDED",
+          message: "Too many authentication attempts. Please wait 15 minutes before trying again.",
+        },
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    logger.error("2FA rate limiter failed", {
+      error: error instanceof Error ? error.message : String(error),
     });
     res.status(429).json({
       error: {
         code: "RATE_LIMIT_EXCEEDED",
-        message:
-          "Too many authentication attempts. Please wait 15 minutes before trying again.",
+        message: "Authentication service temporarily unavailable",
       },
     });
-    return;
   }
-
-  next();
 };
 
 /**
  * Middleware to inject fallback state into request context for downstream logging
  */
-export const injectFallbackState = (
-  req: AuthRequest,
-  _res: Response,
-  next: NextFunction,
-): void => {
+export const injectFallbackState = (req: AuthRequest, _res: Response, next: NextFunction): void => {
   (req as any).rateLimiterState = {
     circuitState: circuitBreaker.getState(),
     isFallback: !circuitBreaker.canExecute(),
@@ -425,4 +485,4 @@ export const injectFallbackState = (
 };
 
 // Export for testing
-export { circuitBreaker, fallbackMetrics, FALLBACK_MAX_REQUESTS_PER_IP, fallbackRateLimitStore };
+export { circuitBreaker, fallbackMetrics, FALLBACK_MAX_REQUESTS_PER_IP };

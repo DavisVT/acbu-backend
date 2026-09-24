@@ -48,6 +48,21 @@ type TreasuryResponse = {
 
 const treasuryCache = new Map<string, { expiresAt: number; value: TreasuryResponse }>();
 
+// Periodically evict expired entries so the Map does not grow unbounded under
+// heavy multi-tenant usage (#574). The interval matches the maximum allowed TTL
+// (5 minutes) so no live entry is ever removed.
+const TREASURY_CACHE_EVICTION_INTERVAL_MS = 300_000; // 5 minutes
+const treasuryCacheEvictionTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of treasuryCache) {
+    if (entry.expiresAt <= now) {
+      treasuryCache.delete(key);
+    }
+  }
+}, TREASURY_CACHE_EVICTION_INTERVAL_MS);
+// Allow the process to exit cleanly even if this timer is still active.
+treasuryCacheEvictionTimer.unref();
+
 function decimalToNumber(value: DecimalLike): number {
   return value?.toNumber() ?? 0;
 }

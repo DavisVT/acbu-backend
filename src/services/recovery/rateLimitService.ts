@@ -1,6 +1,9 @@
 /**
  * Rate limiting service for recovery attempts
  * Prevents brute force attacks and limits recovery attempts
+ * 
+ * PERSISTENCE: All recovery attempts are persisted to the database via RecoveryAttempt model.
+ * This ensures throttling persists across server restarts, addressing B-006 mitigation requirements.
  */
 import { prisma } from "../../config/database";
 import { logger } from "../../config/logger";
@@ -75,8 +78,7 @@ export async function checkRecoveryRateLimit(
         allowed: false,
         remainingAttempts: 0,
         resetTime,
-        reason:
-          "Too many attempts from this IP address. Please try again later.",
+        reason: "Too many attempts from this IP address. Please try again later.",
       };
     }
   }
@@ -96,15 +98,13 @@ export async function checkRecoveryRateLimit(
         allowed: false,
         remainingAttempts: 0,
         resetTime,
-        reason:
-          "Too many recovery attempts for this account. Please contact support.",
+        reason: "Too many recovery attempts for this account. Please contact support.",
       };
     }
   }
 
   // Calculate remaining attempts for identifier
-  const remainingIdentifier =
-    RATE_LIMITS.identifier.maxAttempts - identifierAttempts;
+  const remainingIdentifier = RATE_LIMITS.identifier.maxAttempts - identifierAttempts;
 
   return {
     allowed: true,
@@ -136,9 +136,7 @@ export async function recordRecoveryAttempt(
 
   logger.info("Recovery attempt recorded", {
     userId,
-    identifier: identifier.includes("@")
-      ? "***@***"
-      : identifier.slice(0, 6) + "***",
+    identifier: identifier.includes("@") ? "***@***" : identifier.slice(0, 6) + "***",
     success,
     reason,
     hasIp: !!ip,
@@ -165,9 +163,7 @@ export async function cleanupOldRecoveryAttempts(): Promise<void> {
 /**
  * Get recovery attempt statistics for monitoring
  */
-export async function getRecoveryStats(
-  timeframeMs: number = 24 * 60 * 60 * 1000,
-): Promise<{
+export async function getRecoveryStats(timeframeMs: number = 24 * 60 * 60 * 1000): Promise<{
   totalAttempts: number;
   successfulAttempts: number;
   failedAttempts: number;
@@ -176,29 +172,27 @@ export async function getRecoveryStats(
 }> {
   const since = new Date(Date.now() - timeframeMs);
 
-  const [total, successful, uniqueUsers, uniqueIdentifiers] = await Promise.all(
-    [
-      prisma.recoveryAttempt.count({
-        where: { createdAt: { gte: since } },
-      }),
-      prisma.recoveryAttempt.count({
-        where: {
-          createdAt: { gte: since },
-          success: true,
-        },
-      }),
-      prisma.recoveryAttempt.findMany({
-        where: { createdAt: { gte: since } },
-        select: { userId: true },
-        distinct: ["userId"],
-      }),
-      prisma.recoveryAttempt.findMany({
-        where: { createdAt: { gte: since } },
-        select: { identifier: true },
-        distinct: ["identifier"],
-      }),
-    ],
-  );
+  const [total, successful, uniqueUsers, uniqueIdentifiers] = await Promise.all([
+    prisma.recoveryAttempt.count({
+      where: { createdAt: { gte: since } },
+    }),
+    prisma.recoveryAttempt.count({
+      where: {
+        createdAt: { gte: since },
+        success: true,
+      },
+    }),
+    prisma.recoveryAttempt.findMany({
+      where: { createdAt: { gte: since } },
+      select: { userId: true },
+      distinct: ["userId"],
+    }),
+    prisma.recoveryAttempt.findMany({
+      where: { createdAt: { gte: since } },
+      select: { identifier: true },
+      distinct: ["identifier"],
+    }),
+  ]);
 
   return {
     totalAttempts: total,

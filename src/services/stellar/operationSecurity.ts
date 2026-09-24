@@ -45,9 +45,6 @@ export function validateOperationsForTreasuryAccount(
 /**
  * Check if an account is the treasury account
  */
-export function isTreasuryAccount(
-  accountId: string,
-  treasuryAccountId: string,
-): boolean {
+export function isTreasuryAccount(accountId: string, treasuryAccountId: string): boolean {
   return accountId === treasuryAccountId;
 }

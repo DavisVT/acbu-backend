@@ -81,11 +81,7 @@ export class CacheService {
    */
   async deletePattern(pattern: string): Promise<void> {
     const MAX_REDOS_LENGTH = 128;
-    if (
-      !pattern ||
-      typeof pattern !== "string" ||
-      pattern.length > MAX_REDOS_LENGTH
-    ) {
+    if (!pattern || typeof pattern !== "string" || pattern.length > MAX_REDOS_LENGTH) {
       logger.warn("Cache deletePattern: Rejected invalid or over-length pattern.");
       return;
     }

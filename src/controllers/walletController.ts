@@ -13,10 +13,7 @@ import {
   getWalletState,
   updateWalletWithConcurrency,
 } from "../services/wallet/walletStateService";
-import {
-  getIfMatchHeader,
-  setWalletEtagHeader,
-} from "../utils/walletConcurrency";
+import { getIfMatchHeader, setWalletEtagHeader } from "../utils/walletConcurrency";
 
 const WALLET_ENC_SALT_PREFIX = "acbu-wallet-v1:";
 const WALLET_ENC_KEYLEN = 32;
@@ -25,16 +22,11 @@ const WALLET_ENC_ALGO = "aes-256-gcm";
 
 export const walletConfirmSchema = z.object({
   encryption_method: z.enum(["passcode"]),
-  passcode: z
-    .string()
-    .min(1, "passcode required when encryption_method is passcode"),
+  passcode: z.string().min(1, "passcode required when encryption_method is passcode"),
   passphrase: z.string().min(1, "passphrase is required"),
 });
 
-function sendWalletState(
-  res: Response,
-  state: Awaited<ReturnType<typeof getWalletState>>,
-): void {
+function sendWalletState(res: Response, state: Awaited<ReturnType<typeof getWalletState>>): void {
   setWalletEtagHeader(res.setHeader.bind(res), state.wallet_version);
   res.json(state);
 }
@@ -92,10 +84,7 @@ export async function putWalletAddress(
     if (!userId) throw new AppError("User-scoped API key required", 401);
 
     const schema = z.object({
-      stellar_address: z
-        .string()
-        .length(56)
-        .regex(/^G/, "Must be a valid Stellar public key"),
+      stellar_address: z.string().length(56).regex(/^G/, "Must be a valid Stellar public key"),
     });
     const body = schema.parse(req.body);
 
@@ -115,15 +104,11 @@ export async function putWalletAddress(
       return;
     }
 
-    const walletVersion = await updateWalletWithConcurrency(
-      userId,
-      getIfMatchHeader(req),
-      {
-        stellarAddress: body.stellar_address,
-        encryptedStellarSecret: null,
-        keyEncryptionHint: "external",
-      },
-    );
+    const walletVersion = await updateWalletWithConcurrency(userId, getIfMatchHeader(req), {
+      stellarAddress: body.stellar_address,
+      encryptedStellarSecret: null,
+      keyEncryptionHint: "external",
+    });
 
     logger.info("User wallet replaced", {
       userId,
@@ -167,15 +152,11 @@ export async function deleteWallet(
       select: { stellarAddress: true },
     });
 
-    const walletVersion = await updateWalletWithConcurrency(
-      userId,
-      getIfMatchHeader(req),
-      {
-        stellarAddress: null,
-        encryptedStellarSecret: null,
-        keyEncryptionHint: null,
-      },
-    );
+    const walletVersion = await updateWalletWithConcurrency(userId, getIfMatchHeader(req), {
+      stellarAddress: null,
+      encryptedStellarSecret: null,
+      keyEncryptionHint: null,
+    });
 
     logger.info("User wallet detached", {
       userId,
@@ -217,8 +198,7 @@ export async function postWalletConfirm(
       },
     });
     if (!user) throw new AppError("User not found", 404);
-    if (user.encryptedStellarSecret != null)
-      throw new AppError("Wallet already confirmed", 400);
+    if (user.encryptedStellarSecret != null) throw new AppError("Wallet already confirmed", 400);
     if (!user.stellarAddress) throw new AppError("No wallet to confirm", 400);
     try {
       const kp = Keypair.fromSecret(body.passphrase);
@@ -229,32 +209,22 @@ export async function postWalletConfirm(
     }
     if (body.encryption_method !== "passcode" || !user.passcodeHash)
       throw new AppError("Passcode encryption requires a passcode", 400);
-    const passcodeMatch = await bcrypt.compare(
-      body.passcode,
-      user.passcodeHash,
-    );
+    const passcodeMatch = await bcrypt.compare(body.passcode, user.passcodeHash);
     if (!passcodeMatch) throw new AppError("Invalid passcode", 401);
 
     const salt = WALLET_ENC_SALT_PREFIX + userId;
     const key = crypto.scryptSync(body.passcode, salt, WALLET_ENC_KEYLEN);
     const iv = crypto.randomBytes(WALLET_ENC_IVLEN);
     const cipher = crypto.createCipheriv(WALLET_ENC_ALGO, key, iv);
-    const enc = Buffer.concat([
-      cipher.update(body.passphrase, "utf8"),
-      cipher.final(),
-    ]);
+    const enc = Buffer.concat([cipher.update(body.passphrase, "utf8"), cipher.final()]);
     const authTag = cipher.getAuthTag();
     const blob = Buffer.concat([iv, enc, authTag]);
     const encryptedStellarSecret = blob.toString("base64");
 
-    const walletVersion = await updateWalletWithConcurrency(
-      userId,
-      getIfMatchHeader(req),
-      {
-        encryptedStellarSecret,
-        keyEncryptionHint: "passcode",
-      },
-    );
+    const walletVersion = await updateWalletWithConcurrency(userId, getIfMatchHeader(req), {
+      encryptedStellarSecret,
+      keyEncryptionHint: "passcode",
+    });
 
     setWalletEtagHeader(res.setHeader.bind(res), walletVersion);
     res.status(200).json({ ok: true, wallet_version: walletVersion });
@@ -286,11 +256,7 @@ export async function postWalletActivate(
     });
     if (!user?.stellarAddress) throw new AppError("No wallet address set", 400);
 
-    const walletVersion = await updateWalletWithConcurrency(
-      userId,
-      getIfMatchHeader(req),
-      {},
-    );
+    const walletVersion = await updateWalletWithConcurrency(userId, getIfMatchHeader(req), {});
 
     const result = await ensureAccountActivated(user.stellarAddress);
     setWalletEtagHeader(res.setHeader.bind(res), walletVersion);

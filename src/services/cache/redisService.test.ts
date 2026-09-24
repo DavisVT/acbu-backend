@@ -75,21 +75,15 @@ describe("redisService READONLY failover handling", () => {
     const reconnectOnError = createReconnectOnError();
 
     expect(
-      reconnectOnError(
-        new Error("READONLY You can't write against a read only replica."),
-      ),
+      reconnectOnError(new Error("READONLY You can't write against a read only replica.")),
     ).toBe(2);
-    expect(reconnectOnError(new Error("WRONGTYPE Operation against a key"))).toBe(
-      false,
-    );
+    expect(reconnectOnError(new Error("WRONGTYPE Operation against a key"))).toBe(false);
     expect(getRedisFailoverMetrics().reconnects).toBe(1);
   });
 
   it("retries cache writes after READONLY and reconnects", async () => {
     mockSet
-      .mockRejectedValueOnce(
-        new Error("READONLY You can't write against a read only replica."),
-      )
+      .mockRejectedValueOnce(new Error("READONLY You can't write against a read only replica."))
       .mockResolvedValueOnce("OK");
 
     const service = new RedisService();
@@ -103,12 +97,8 @@ describe("redisService READONLY failover handling", () => {
 
   it("retries until READONLY clears during Sentinel promotion", async () => {
     mockGet
-      .mockRejectedValueOnce(
-        new Error("READONLY You can't write against a read only replica."),
-      )
-      .mockRejectedValueOnce(
-        new Error("READONLY You can't write against a read only replica."),
-      )
+      .mockRejectedValueOnce(new Error("READONLY You can't write against a read only replica."))
+      .mockRejectedValueOnce(new Error("READONLY You can't write against a read only replica."))
       .mockResolvedValueOnce("cached-value");
 
     const service = new RedisService();
@@ -119,9 +109,7 @@ describe("redisService READONLY failover handling", () => {
   });
 
   it("throws after exhausting READONLY retry attempts", async () => {
-    mockSet.mockRejectedValue(
-      new Error("READONLY You can't write against a read only replica."),
-    );
+    mockSet.mockRejectedValue(new Error("READONLY You can't write against a read only replica."));
 
     const service = new RedisService();
     await expect(service.set("rate:user:2", "1")).rejects.toThrow(/READONLY/);

@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Node.js v16+ installed
-- npm or pnpm package manager
+- pnpm package manager (required)
 - PowerShell execution policy configured (or use Command Prompt)
 
 ## Installation Steps
@@ -14,7 +14,7 @@ Open Command Prompt (cmd.exe) and run:
 
 ```cmd
 cd "C:\Users\machintosh\Documents\Fouth Wave\acbu-backend"
-npm install --save-dev fast-check
+pnpm add -D fast-check
 ```
 
 ### Option 2: Using PowerShell with Execution Policy
@@ -26,13 +26,6 @@ If you prefer PowerShell, first enable script execution:
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 # Then install
-cd "C:\Users\machintosh\Documents\Fouth Wave\acbu-backend"
-npm install --save-dev fast-check
-```
-
-### Option 3: Using pnpm (if configured)
-
-```cmd
 cd "C:\Users\machintosh\Documents\Fouth Wave\acbu-backend"
 pnpm add -D fast-check
 ```
@@ -55,7 +48,7 @@ Expected output:
 ### 1. Run Standard Unit Tests
 
 ```cmd
-npm test -- src/services/feePolicy/__tests__/feePolicyService.test.ts
+pnpm test -- src/services/feePolicy/__tests__/feePolicyService.test.ts
 ```
 
 Expected output:
@@ -97,7 +90,7 @@ Tests:       19 passed, 19 total
 ### 2. Run Property-Based Tests
 
 ```cmd
-npm test -- src/services/feePolicy/__tests__/feePolicyService.pbt.test.ts
+pnpm test -- src/services/feePolicy/__tests__/feePolicyService.pbt.test.ts
 ```
 
 Expected output:
@@ -125,13 +118,13 @@ Tests:       12 passed, 12 total
 ### 3. Run All Tests
 
 ```cmd
-npm test
+pnpm test
 ```
 
 ### 4. Run Tests with Coverage
 
 ```cmd
-npm run test:coverage
+pnpm run test:coverage
 ```
 
 Expected coverage for fee policy service:
@@ -147,12 +140,12 @@ feePolicyService.ts               |   95.83 |    91.67 |     100 |   95.65 |
 
 **Solution**: Ensure fast-check is installed:
 ```cmd
-npm list fast-check
+pnpm list fast-check
 ```
 
 If not installed, run:
 ```cmd
-npm install --save-dev fast-check
+pnpm add -D fast-check
 ```
 
 ### Issue: "Cannot find module 'fast-check'"
@@ -160,7 +153,7 @@ npm install --save-dev fast-check
 **Solution**: Clear node_modules and reinstall:
 ```cmd
 rmdir /s /q node_modules
-npm install
+pnpm install
 ```
 
 ### Issue: Tests fail with "mockResolvedValueOnce is not a function"

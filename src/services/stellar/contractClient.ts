@@ -1,10 +1,4 @@
-import {
-  TransactionBuilder,
-  Operation,
-  xdr,
-  Address,
-  rpc,
-} from "@stellar/stellar-sdk";
+import { TransactionBuilder, Operation, xdr, Address, rpc } from "@stellar/stellar-sdk";
 import { stellarClient } from "./client";
 import { getBaseFee, calculateSorobanFeeWithCap, getFeeCapConfig } from "./feeManager";
 import { logger } from "../../config/logger";
@@ -14,9 +8,7 @@ import { trace, SpanStatusCode } from "@opentelemetry/api";
 const sorobanTracer = trace.getTracer("soroban");
 
 function isRetryableSorobanNetworkError(message: string): boolean {
-  return /ENOTFOUND|ECONNRESET|ETIMEDOUT|ECONNREFUSED|fetch failed|socket hang up/i.test(
-    message,
-  );
+  return /ENOTFOUND|ECONNRESET|ETIMEDOUT|ECONNREFUSED|fetch failed|socket hang up/i.test(message);
 }
 
 async function simulateTransactionWithRetry(
@@ -84,35 +76,31 @@ export class ContractClient {
   /**
    * Invoke a contract function
    */
-  async invokeContract(
-    options: ContractCallOptions,
-  ): Promise<ContractInvokeResult> {
-    return sorobanTracer.startActiveSpan(
-      `soroban.invoke.${options.functionName}`,
-      async (span) => {
+  async invokeContract(options: ContractCallOptions): Promise<ContractInvokeResult> {
+    return sorobanTracer.startActiveSpan(`soroban.invoke.${options.functionName}`, async (span) => {
+      span.setAttributes({
+        "soroban.contract_id": options.contractId,
+        "soroban.function": options.functionName,
+        "soroban.source_account": options.sourceAccount,
+      });
+      try {
+        const result = await this._invokeContractInner(options);
         span.setAttributes({
-          "soroban.contract_id": options.contractId,
-          "soroban.function": options.functionName,
-          "soroban.source_account": options.sourceAccount,
+          "soroban.tx_hash": result.transactionHash,
+          "soroban.ledger": result.ledger,
         });
-        try {
-          const result = await this._invokeContractInner(options);
-          span.setAttributes({ "soroban.tx_hash": result.transactionHash, "soroban.ledger": result.ledger });
-          span.setStatus({ code: SpanStatusCode.OK });
-          return result;
-        } catch (err) {
-          span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
-          throw err;
-        } finally {
-          span.end();
-        }
-      },
-    );
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (err) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+        throw err;
+      } finally {
+        span.end();
+      }
+    });
   }
 
-  private async _invokeContractInner(
-    options: ContractCallOptions,
-  ): Promise<ContractInvokeResult> {
+  private async _invokeContractInner(options: ContractCallOptions): Promise<ContractInvokeResult> {
     try {
       const { contractId, functionName, args, sourceAccount, fee } = options;
 
@@ -145,29 +133,19 @@ export class ContractClient {
       const rpcServer = new rpc.Server(stellarClient.getSorobanRpcUrl());
       // Simulate first so we can attach Soroban auth + resource footprint/fees.
       // This is required for contracts that call `require_auth()` (admin/validator gated).
-      const simulation = await simulateTransactionWithRetry(
-        rpcServer,
-        transaction,
-        {
-          contractId,
-          functionName,
-        },
-      );
+      const simulation = await simulateTransactionWithRetry(rpcServer, transaction, {
+        contractId,
+        functionName,
+      });
       if (rpc.Api.isSimulationError(simulation)) {
         throw new Error(`Simulation error: ${simulation.error}`);
       }
-      transaction = rpc
-        .assembleTransaction(transaction, simulation)
-        .setTimeout(0)
-        .build();
+      transaction = rpc.assembleTransaction(transaction, simulation).setTimeout(0).build();
 
       // Apply Soroban fee caps (min/max) to ensure predictable confirmation under load
       const { minFeeStroops, maxFeeStroops } = getFeeCapConfig();
       const currentFee = parseInt(transaction.fee, 10);
-      if (
-        currentFee < minFeeStroops ||
-        currentFee > maxFeeStroops
-      ) {
+      if (currentFee < minFeeStroops || currentFee > maxFeeStroops) {
         const cappedFee = calculateSorobanFeeWithCap(currentFee);
         transaction.fee = cappedFee;
         logger.debug("Applied Soroban fee cap", {
@@ -216,16 +194,14 @@ export class ContractClient {
         }
       }
       if (!send) {
-        throw lastSendError instanceof Error
-          ? lastSendError
-          : new Error(String(lastSendError));
+        throw lastSendError instanceof Error ? lastSendError : new Error(String(lastSendError));
       }
       const txHash = send.hash;
 
       // Poll until the transaction is confirmed.
       const maxWaitMs = 120_000;
       const start = Date.now();
-      // eslint-disable-next-line no-constant-condition
+
       while (true) {
         let status: any;
         try {
@@ -266,9 +242,7 @@ export class ContractClient {
           };
         }
         if (status.status === "FAILED") {
-          throw new Error(
-            `Soroban transaction failed: ${status.resultXdr ?? "unknown result"}`,
-          );
+          throw new Error(`Soroban transaction failed: ${status.resultXdr ?? "unknown result"}`);
         }
         if (Date.now() - start > maxWaitMs) {
           throw new Error(`Soroban transaction timed out after ${maxWaitMs}ms`);
@@ -326,14 +300,10 @@ export class ContractClient {
       const transaction = builder.build();
 
       const rpcServer = new rpc.Server(stellarClient.getSorobanRpcUrl());
-      const simulation = await simulateTransactionWithRetry(
-        rpcServer,
-        transaction,
-        {
-          contractId,
-          functionName,
-        },
-      );
+      const simulation = await simulateTransactionWithRetry(rpcServer, transaction, {
+        contractId,
+        functionName,
+      });
 
       if (rpc.Api.isSimulationError(simulation)) {
         throw new Error(`Simulation error: ${simulation.error}`);
@@ -379,19 +349,13 @@ export class ContractClient {
                 ? rawResultXdr.toString("base64")
                 : String(rawResultXdr);
 
-        const txResult = xdr.TransactionResult.fromXDR(
-          resultXdrBase64,
-          "base64",
-        );
+        const txResult = xdr.TransactionResult.fromXDR(resultXdrBase64, "base64");
         const results = txResult.result().results();
         if (results.length > 0) {
           const tr = results[0].tr();
           // Check for host function success
           const opResult = tr.invokeHostFunctionResult();
-          if (
-            opResult.switch() ===
-            xdr.InvokeHostFunctionResultCode.invokeHostFunctionSuccess()
-          ) {
+          if (opResult.switch() === xdr.InvokeHostFunctionResultCode.invokeHostFunctionSuccess()) {
             return opResult.success() as unknown as xdr.ScVal;
           }
         }
@@ -450,10 +414,7 @@ export class ContractClient {
         return scVal.i64().toBigInt().toString();
       case xdr.ScValType.scvU128():
       case xdr.ScValType.scvI128(): {
-        const parts =
-          scVal.switch() === xdr.ScValType.scvU128()
-            ? scVal.u128()
-            : scVal.i128();
+        const parts = scVal.switch() === xdr.ScValType.scvU128() ? scVal.u128() : scVal.i128();
         const lo = parts.lo().toBigInt();
         const hi = parts.hi().toBigInt();
         return (hi << BigInt(64)) | lo;
@@ -463,9 +424,7 @@ export class ContractClient {
       case xdr.ScValType.scvBytes():
         return scVal.bytes();
       case xdr.ScValType.scvVec():
-        return (scVal.vec() ?? []).map((v: xdr.ScVal) =>
-          ContractClient.fromScVal(v),
-        );
+        return (scVal.vec() ?? []).map((v: xdr.ScVal) => ContractClient.fromScVal(v));
       case xdr.ScValType.scvAddress():
         return Address.fromScVal(scVal).toString();
       default:
