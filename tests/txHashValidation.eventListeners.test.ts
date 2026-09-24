@@ -190,6 +190,14 @@ describe("Escrow listener – rejects fake tx hashes", () => {
     await invokeHandler("contract_credited", event);
     expect(mockPublish).toHaveBeenCalled();
   });
+
+  it("does not publish an event with an unexpected type", async () => {
+    const event = makeEvent("unexpected_type", { amount: "100" });
+
+    await invokeHandler("contract_credited", event);
+
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
 });
 
 describe("Lending Pool listener – rejects fake tx hashes", () => {
