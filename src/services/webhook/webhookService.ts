@@ -12,10 +12,7 @@ const WEBHOOK_HEADER_SIGNATURE = "x-acbu-signature";
 const MAX_ATTEMPTS = 5; // terminal threshold; backoff is managed by the queue consumer
 
 export type WebhookEventType =
-  | "transaction.completed"
-  | "transaction.failed"
-  | "mint.completed"
-  | "burn.completed";
+  "transaction.completed" | "transaction.failed" | "mint.completed" | "burn.completed";
 
 export interface WebhookPayload {
   event: WebhookEventType;
