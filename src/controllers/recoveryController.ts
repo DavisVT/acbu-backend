@@ -1,39 +1,40 @@
 import { Response, NextFunction } from "express";
 import { z } from "zod";
 import { Request } from "express";
-import {
-  unlockApp,
-  verifyRecoveryOtp,
-} from "../services/recovery/recoveryService";
+import { unlockApp, verifyRecoveryOtp } from "../services/recovery/recoveryService";
 import { AppError } from "../middleware/errorHandler";
 import { DeviceFingerprint } from "../services/recovery/deviceVerification";
 
 export const unlockAppSchema = z.object({
   identifier: z.string().min(1, "identifier is required"),
   passcode: z.string().min(1, "passcode is required"),
-  device_fingerprint: z.object({
-    user_agent: z.string().optional(),
-    ip: z.string().optional(),
-    accept_language: z.string().optional(),
-    accept_encoding: z.string().optional(),
-    timezone: z.string().optional(),
-    screen_resolution: z.string().optional(),
-    platform: z.string().optional(),
-  }).optional(),
+  device_fingerprint: z
+    .object({
+      user_agent: z.string().optional(),
+      ip: z.string().optional(),
+      accept_language: z.string().optional(),
+      accept_encoding: z.string().optional(),
+      timezone: z.string().optional(),
+      screen_resolution: z.string().optional(),
+      platform: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const verifyRecoveryOtpSchema = z.object({
   challenge_token: z.string().min(1, "challenge_token is required"),
   code: z.string().min(1, "code is required"),
-  device_fingerprint: z.object({
-    user_agent: z.string().optional(),
-    ip: z.string().optional(),
-    accept_language: z.string().optional(),
-    accept_encoding: z.string().optional(),
-    timezone: z.string().optional(),
-    screen_resolution: z.string().optional(),
-    platform: z.string().optional(),
-  }).optional(),
+  device_fingerprint: z
+    .object({
+      user_agent: z.string().optional(),
+      ip: z.string().optional(),
+      accept_language: z.string().optional(),
+      accept_encoding: z.string().optional(),
+      timezone: z.string().optional(),
+      screen_resolution: z.string().optional(),
+      platform: z.string().optional(),
+    })
+    .optional(),
   trust_device: z.boolean().optional(),
 });
 
@@ -42,20 +43,16 @@ export const verifyRecoveryOtpSchema = z.object({
  * Body: { identifier: string (email or E.164 phone), passcode: string }
  * Returns { challenge_token, channel }.
  */
-export async function postUnlock(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+export async function postUnlock(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const body = unlockAppSchema.parse(req.body);
     // Extract device fingerprint from request headers and body
     const deviceFingerprint: DeviceFingerprint = {
-      userAgent: req.headers['user-agent'] as string || 'unknown',
-      ip: req.ip || req.connection.remoteAddress || '0.0.0.0',
-      acceptLanguage: req.headers['accept-language'] as string,
-      acceptEncoding: req.headers['accept-encoding'] as string,
-      platform: req.headers['sec-ch-ua-platform'] as string,
+      userAgent: (req.headers["user-agent"] as string) || "unknown",
+      ip: req.ip || req.connection.remoteAddress || "0.0.0.0",
+      acceptLanguage: req.headers["accept-language"] as string,
+      acceptEncoding: req.headers["accept-encoding"] as string,
+      platform: req.headers["sec-ch-ua-platform"] as string,
       ...body.device_fingerprint,
     };
 
@@ -79,18 +76,13 @@ export async function postUnlock(
     if (e instanceof Error) {
       if (e.message === "User not found or recovery not enabled")
         return next(new AppError(e.message, 404));
-      if (e.message === "Invalid passcode")
-        return next(new AppError(e.message, 401));
-      if (e.message.includes("identifier"))
-        return next(new AppError(e.message, 400));
+      if (e.message === "Invalid passcode") return next(new AppError(e.message, 401));
+      if (e.message.includes("identifier")) return next(new AppError(e.message, 400));
       if (e.message === "Recovery channel not configured")
         return next(new AppError(e.message, 400));
-      if (e.message === "OTP delivery unavailable")
-        return next(new AppError(e.message, 503));
-      if (e.message.includes("Rate limit exceeded"))
-        return next(new AppError(e.message, 429));
-      if (e.message.includes("Too many attempts"))
-        return next(new AppError(e.message, 429));
+      if (e.message === "OTP delivery unavailable") return next(new AppError(e.message, 503));
+      if (e.message.includes("Rate limit exceeded")) return next(new AppError(e.message, 429));
+      if (e.message.includes("Too many attempts")) return next(new AppError(e.message, 429));
     }
     next(e);
   }
@@ -109,14 +101,16 @@ export async function postUnlockVerify(
   try {
     const body = verifyRecoveryOtpSchema.parse(req.body);
     // Extract device fingerprint from request headers and body
-    const deviceFingerprint: DeviceFingerprint | undefined = body.device_fingerprint ? {
-      userAgent: req.headers['user-agent'] as string || 'unknown',
-      ip: req.ip || req.connection.remoteAddress || '0.0.0.0',
-      acceptLanguage: req.headers['accept-language'] as string,
-      acceptEncoding: req.headers['accept-encoding'] as string,
-      platform: req.headers['sec-ch-ua-platform'] as string,
-      ...body.device_fingerprint,
-    } : undefined;
+    const deviceFingerprint: DeviceFingerprint | undefined = body.device_fingerprint
+      ? {
+          userAgent: (req.headers["user-agent"] as string) || "unknown",
+          ip: req.ip || req.connection.remoteAddress || "0.0.0.0",
+          acceptLanguage: req.headers["accept-language"] as string,
+          acceptEncoding: req.headers["accept-encoding"] as string,
+          platform: req.headers["sec-ch-ua-platform"] as string,
+          ...body.device_fingerprint,
+        }
+      : undefined;
 
     const result = await verifyRecoveryOtp({
       challenge_token: body.challenge_token,
@@ -134,13 +128,9 @@ export async function postUnlockVerify(
       return next(new AppError(msg, 400));
     }
     if (e instanceof Error) {
-      if (
-        e.message === "Invalid or expired code" ||
-        e.message === "Invalid code"
-      )
+      if (e.message === "Invalid or expired code" || e.message === "Invalid code")
         return next(new AppError(e.message, 401));
-      if (e.message === "Invalid or expired challenge")
-        return next(new AppError(e.message, 401));
+      if (e.message === "Invalid or expired challenge") return next(new AppError(e.message, 401));
     }
     next(e);
   }

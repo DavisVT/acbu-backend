@@ -7,11 +7,7 @@
  * transaction is confirmed; if the swap fails the job nacks and retries.
  */
 import type { ConsumeMessage } from "amqplib";
-import {
-  connectRabbitMQ,
-  QUEUES,
-  assertQueueWithDLQ,
-} from "../config/rabbitmq";
+import { connectRabbitMQ, QUEUES, assertQueueWithDLQ } from "../config/rabbitmq";
 import { getQueueMaxRetries } from "./queueConfig";
 import { logger } from "../config/logger";
 import { prisma } from "../config/database";
@@ -39,9 +35,7 @@ export async function startUsdcConvertAndMintConsumer(): Promise<void> {
       const retries = typeof headers["x-retries"] === "number" ? headers["x-retries"] : 0;
 
       try {
-        const body = JSON.parse(
-          msg.content.toString(),
-        ) as UsdcConvertAndMintPayload;
+        const body = JSON.parse(msg.content.toString()) as UsdcConvertAndMintPayload;
         await processUsdcConvertAndMint(body);
         ch.ack(msg);
       } catch (e) {
@@ -82,9 +76,7 @@ export async function startUsdcConvertAndMintConsumer(): Promise<void> {
   logger.info("USDC convert-and-mint consumer started", { queue: QUEUE });
 }
 
-export async function processUsdcConvertAndMint(
-  payload: UsdcConvertAndMintPayload,
-): Promise<void> {
+export async function processUsdcConvertAndMint(payload: UsdcConvertAndMintPayload): Promise<void> {
   const { onRampSwapId } = payload;
   // Atomically claim the swap: only one worker wins when status=pending_convert.
   // updateMany returns { count: 0 } if another worker already transitioned it.
@@ -170,9 +162,7 @@ export async function processUsdcConvertAndMint(
   }
 }
 
-export async function enqueueUsdcConvertAndMint(
-  payload: UsdcConvertAndMintPayload,
-): Promise<void> {
+export async function enqueueUsdcConvertAndMint(payload: UsdcConvertAndMintPayload): Promise<void> {
   const ch = await connectRabbitMQ();
   await assertQueueWithDLQ(QUEUE);
   ch.sendToQueue(QUEUE, Buffer.from(JSON.stringify(payload)), {

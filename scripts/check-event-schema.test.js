@@ -54,7 +54,7 @@ test("malformed schema entries fail validation", () => {
   fs.mkdirSync(path.join(temporaryRoot, "shared"));
   fs.writeFileSync(
     path.join(temporaryRoot, "shared/events-schema.json"),
-    JSON.stringify({ version: 1, events: [{}] }),
+    JSON.stringify({ version: 1, listener_contracts: [{}] }),
   );
 
   assert.match(

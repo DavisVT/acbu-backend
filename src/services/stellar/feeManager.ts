@@ -28,10 +28,10 @@ export async function getBaseFee(): Promise<string> {
       const baseFee = await stellarClient.getServer().fetchBaseFee();
       return String(baseFee);
     } catch (err) {
-      logger.warn(
-        "Failed to fetch dynamic Stellar base fee; falling back to configured value",
-        { err, fallback: config.stellar.baseFeeStroops },
-      );
+      logger.warn("Failed to fetch dynamic Stellar base fee; falling back to configured value", {
+        err,
+        fallback: config.stellar.baseFeeStroops,
+      });
     }
   }
   return String(config.stellar.baseFeeStroops);
@@ -54,8 +54,7 @@ export async function fetchDynamicBaseFee(): Promise<number> {
  * @returns Capped fee in stroops as a string
  */
 export function calculateSorobanFeeWithCap(totalFeeStroops: number): string {
-  const { sorobanMinFeeStroops: min, sorobanMaxFeeStroops: max } =
-    config.stellar;
+  const { sorobanMinFeeStroops: min, sorobanMaxFeeStroops: max } = config.stellar;
 
   const capped = Math.max(min, Math.min(max, totalFeeStroops));
 

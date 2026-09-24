@@ -32,9 +32,7 @@ export const ALLOWED_MIME_TYPES: Record<string, string[]> = {
   selfie: ["image/jpeg", "image/png"],
 };
 
-export const ALL_ALLOWED_MIME_TYPES = [
-  ...new Set(Object.values(ALLOWED_MIME_TYPES).flat()),
-];
+export const ALL_ALLOWED_MIME_TYPES = [...new Set(Object.values(ALLOWED_MIME_TYPES).flat())];
 
 // ── TTL constants (seconds) ───────────────────────────────────────────────────
 /** Upload URL lifetime — short to limit window for abuse. */
@@ -84,11 +82,7 @@ function getS3Client(): S3Client {
  * Scoping by userId means a presigned URL for user A's key can never be used
  * to read user B's object — the key itself encodes ownership.
  */
-export function buildObjectKey(
-  userId: string,
-  documentKind: string,
-  documentId: string,
-): string {
+export function buildObjectKey(userId: string, documentKind: string, documentId: string): string {
   // Sanitise inputs — only allow safe path characters
   const safeUserId = userId.replace(/[^a-zA-Z0-9-]/g, "");
   const safeKind = documentKind.replace(/[^a-zA-Z0-9_]/g, "");
@@ -176,10 +170,7 @@ export async function generateUploadUrl(
     expiresIn: UPLOAD_URL_TTL_SECONDS,
   });
 
-  const key_checksum = crypto
-    .createHash("sha256")
-    .update(objectKey)
-    .digest("hex");
+  const key_checksum = crypto.createHash("sha256").update(objectKey).digest("hex");
 
   logger.info("S3 presigned upload URL generated", {
     userId,
@@ -226,14 +217,10 @@ export async function generateDownloadUrl(
   // Check scan status before issuing a download URL
   const scanStatus = await getObjectScanStatus(objectKey);
   if (scanStatus === "infected") {
-    throw new Error(
-      "Document failed virus scan and cannot be downloaded. Contact support.",
-    );
+    throw new Error("Document failed virus scan and cannot be downloaded. Contact support.");
   }
   if (scanStatus === "pending") {
-    throw new Error(
-      "Document is pending virus scan. Please try again in a few minutes.",
-    );
+    throw new Error("Document is pending virus scan. Please try again in a few minutes.");
   }
 
   const expiresAt = Math.floor(Date.now() / 1000) + DOWNLOAD_URL_TTL_SECONDS;
@@ -271,16 +258,12 @@ export async function generateDownloadUrl(
  * In production this tag is written by a Lambda/ClamAV scanner triggered on
  * s3:ObjectCreated events. The tag acts as the gate for download URL issuance.
  */
-export async function getObjectScanStatus(
-  objectKey: string,
-): Promise<string> {
+export async function getObjectScanStatus(objectKey: string): Promise<string> {
   try {
     const client = getS3Client();
     const bucket = requireConfiguredS3Bucket(config.s3.bucket);
     // Use HeadObject to confirm the object exists first
-    await client.send(
-      new HeadObjectCommand({ Bucket: bucket, Key: objectKey }),
-    );
+    await client.send(new HeadObjectCommand({ Bucket: bucket, Key: objectKey }));
 
     // For local/test environments where no scanner runs, skip the tag read
     // so the flow is testable without a real scanner.

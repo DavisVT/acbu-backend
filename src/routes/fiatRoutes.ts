@@ -1,11 +1,6 @@
 import { Router } from "express";
 import { validateApiKey } from "../middleware/auth";
-import {
-  postFaucet,
-  getAccounts,
-  postOnRamp,
-  postOffRamp,
-} from "../controllers/fiatController";
+import { postFaucet, getAccounts, postOnRamp, postOffRamp } from "../controllers/fiatController";
 
 const router: Router = Router();
 

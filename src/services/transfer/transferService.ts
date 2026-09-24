@@ -9,18 +9,18 @@ import { stellarClient } from "../stellar/client";
 import { getBaseFee } from "../stellar/feeManager";
 import { resolveRecipientToStellarAddress } from "../recipient/recipientResolver";
 import crypto from "crypto";
-import { fetchWalletBalance, reserveWalletVersion } from "../wallet/walletStateService";
+import { reserveWalletVersion } from "../wallet/walletStateService";
 
 import { logger, logFinancialEvent } from "../../config/logger";
 import type { CreateTransferParams, CreateTransferOptions, CreateTransferResult } from "./types";
 
-/** ACBU asset. Throws when STELLAR_ACBU_ASSET_ISSUER is unset rather than falling back to native XLM. */
+/** ACBU asset: use native when issuer not configured. Set STELLAR_ACBU_ASSET_ISSUER for custom asset. */
 function getAcbuAsset(): Asset {
   const issuer = process.env.STELLAR_ACBU_ASSET_ISSUER;
-  if (!issuer) {
-    throw new Error("STELLAR_ACBU_ASSET_ISSUER is not configured");
+  if (issuer) {
+    return new Asset("ACBU", issuer);
   }
-  return new Asset("ACBU", issuer);
+  return Asset.native();
 }
 
 /**
@@ -96,12 +96,6 @@ export async function createTransfer(
 
   await reserveWalletVersion(senderUserId, options?.ifMatch);
 
-  // On-chain balance read; concurrent requests are serialized by reserveWalletVersion (If-Match).
-  const { snapshot } = await fetchWalletBalance(senderUserId);
-  if (Number(snapshot.balance) < Number(amount)) {
-    throw new Error("Insufficient balance");
-  }
-
   const recipientAddress = await resolveRecipientToStellarAddress(to, senderUserId);
   if (!recipientAddress) {
     throw new Error("Recipient not found or not available");
@@ -148,11 +142,11 @@ export async function createTransfer(
   }
 
   const correlationId = options?.correlationId ?? crypto.randomUUID();
-  // ACBU has 7 decimals (stroops). Avoid float arithmetic: parse integer and
-  // fractional parts separately.
+  // Avoid float arithmetic: parse integer and fractional parts separately to
+  // prevent precision loss when amount has up to 7 decimal places.
   const [wholePart, fracPart = ""] = amount.split(".");
   const amountInSmallestUnit =
-    parseInt(wholePart, 10) * 10_000_000 + parseInt(fracPart.padEnd(7, "0"), 10);
+    parseInt(wholePart, 10) * 10000000 + parseInt(fracPart.slice(0, 7).padEnd(7, "0"), 10);
 
   // Emit transfer.initiated immediately after the Transaction row is created
   logFinancialEvent({

@@ -23,12 +23,8 @@ export class AppError extends Error {
           ? ErrorCodes.INTERNAL_ERROR
           : ErrorCodes.BAD_REQUEST;
 
-    this.code =
-      typeof codeOrDetails === "string"
-        ? codeOrDetails
-        : fallbackCode;
-    this.details =
-      typeof codeOrDetails === "string" ? details : codeOrDetails;
+    this.code = typeof codeOrDetails === "string" ? codeOrDetails : fallbackCode;
+    this.details = typeof codeOrDetails === "string" ? details : codeOrDetails;
     this.isOperational = true;
     Object.setPrototypeOf(this, new.target.prototype);
     Error.captureStackTrace(this, this.constructor);
@@ -116,4 +112,3 @@ export const errorHandler = (
     },
   });
 };
-

@@ -49,16 +49,19 @@ function validateEventSchema({ rootDir = path.resolve(__dirname, "..") } = {}) {
     return [`Unable to read ${path.relative(rootDir, schemaPath)}: ${error.message}`];
   }
 
-  if (!Number.isInteger(schema.version) || schema.version < 1) {
-    errors.push("Schema version must be a positive integer");
+  if (!(
+    (Number.isInteger(schema.version) && schema.version >= 1) ||
+    (typeof schema.version === "string" && schema.version.length > 0)
+  )) {
+    errors.push("Schema version must be a positive integer or non-empty string");
   }
-  if (!Array.isArray(schema.events) || schema.events.length === 0) {
-    errors.push("Schema events must be a non-empty array");
+  if (!Array.isArray(schema.listener_contracts) || schema.listener_contracts.length === 0) {
+    errors.push("Schema listener_contracts must be a non-empty array");
     return errors;
   }
 
   const schemaByContract = new Map();
-  for (const event of schema.events) {
+  for (const event of schema.listener_contracts) {
     if (
       !event ||
       typeof event.contract !== "string" ||

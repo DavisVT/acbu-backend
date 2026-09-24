@@ -9,11 +9,7 @@ import { basketService } from "../services/basket";
 import { getLatestAcbuRate } from "../services/rates/acbuRateCache";
 import { computeSyntheticBasketOneAcbuForBasket } from "../services/oracle/syntheticBasket";
 
-export async function getRates(
-  _req: Request,
-  res: Response,
-  next: NextFunction,
-): Promise<void> {
+export async function getRates(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     let latest: AcbuRate | null = null;
     try {

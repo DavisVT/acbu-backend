@@ -20,14 +20,11 @@ export const getContractAddresses = (): ContractAddresses => {
   // Try to load from environment variables first
   const addresses: ContractAddresses = {
     oracle: process.env[`CONTRACT_ORACLE_${network.toUpperCase()}`] || "",
-    reserveTracker:
-      process.env[`CONTRACT_RESERVE_TRACKER_${network.toUpperCase()}`] || "",
+    reserveTracker: process.env[`CONTRACT_RESERVE_TRACKER_${network.toUpperCase()}`] || "",
     minting: process.env[`CONTRACT_MINTING_${network.toUpperCase()}`] || "",
     burning: process.env[`CONTRACT_BURNING_${network.toUpperCase()}`] || "",
-    savingsVault:
-      process.env[`CONTRACT_SAVINGS_VAULT_${network.toUpperCase()}`] || "",
-    lendingPool:
-      process.env[`CONTRACT_LENDING_POOL_${network.toUpperCase()}`] || "",
+    savingsVault: process.env[`CONTRACT_SAVINGS_VAULT_${network.toUpperCase()}`] || "",
+    lendingPool: process.env[`CONTRACT_LENDING_POOL_${network.toUpperCase()}`] || "",
     escrow: process.env[`CONTRACT_ESCROW_${network.toUpperCase()}`] || "",
   };
 

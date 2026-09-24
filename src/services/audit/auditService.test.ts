@@ -47,11 +47,9 @@ describe("AuditService Reliability (RabbitMQ)", () => {
 
     await logAudit(entry);
 
-    expect(mockChannel.sendToQueue).toHaveBeenCalledWith(
-      QUEUES.AUDIT_LOGS,
-      expect.any(Buffer),
-      { persistent: true },
-    );
+    expect(mockChannel.sendToQueue).toHaveBeenCalledWith(QUEUES.AUDIT_LOGS, expect.any(Buffer), {
+      persistent: true,
+    });
     expect(logger.debug).toHaveBeenCalledWith(
       expect.stringContaining("Audit entry published to queue"),
       expect.anything(),
@@ -61,9 +59,7 @@ describe("AuditService Reliability (RabbitMQ)", () => {
   it("should reject publishing admin audit entries with missing attribution fields", async () => {
     mockChannel.sendToQueue.mockReturnValue(true);
 
-    const appendFileSyncSpy = jest
-      .spyOn(fs, "appendFileSync")
-      .mockImplementation(() => {});
+    const appendFileSyncSpy = jest.spyOn(fs, "appendFileSync").mockImplementation(() => {});
     const existsSyncSpy = jest.spyOn(fs, "existsSync").mockReturnValue(true);
 
     await expect(
@@ -99,23 +95,17 @@ describe("AuditService Reliability (RabbitMQ)", () => {
       reason: "Emergency access",
     });
 
-    expect(mockChannel.sendToQueue).toHaveBeenCalledWith(
-      QUEUES.AUDIT_LOGS,
-      expect.any(Buffer),
-      { persistent: true },
-    );
+    expect(mockChannel.sendToQueue).toHaveBeenCalledWith(QUEUES.AUDIT_LOGS, expect.any(Buffer), {
+      persistent: true,
+    });
   });
 
   it("should fall back to file if publish fails (returns false)", async () => {
     mockChannel.sendToQueue.mockReturnValue(false);
 
     // Mock FS
-    const appendFileSyncSpy = jest
-      .spyOn(fs, "appendFileSync")
-      .mockImplementation(() => {});
-    const mkdirSyncSpy = jest
-      .spyOn(fs, "mkdirSync")
-      .mockImplementation(() => "");
+    const appendFileSyncSpy = jest.spyOn(fs, "appendFileSync").mockImplementation(() => {});
+    const mkdirSyncSpy = jest.spyOn(fs, "mkdirSync").mockImplementation(() => "");
     const existsSyncSpy = jest.spyOn(fs, "existsSync").mockReturnValue(true);
 
     await logAudit(entry);
@@ -137,12 +127,8 @@ describe("AuditService Reliability (RabbitMQ)", () => {
     });
 
     // Mock FS
-    const appendFileSyncSpy = jest
-      .spyOn(fs, "appendFileSync")
-      .mockImplementation(() => {});
-    const mkdirSyncSpy = jest
-      .spyOn(fs, "mkdirSync")
-      .mockImplementation(() => "");
+    const appendFileSyncSpy = jest.spyOn(fs, "appendFileSync").mockImplementation(() => {});
+    const mkdirSyncSpy = jest.spyOn(fs, "mkdirSync").mockImplementation(() => "");
     const existsSyncSpy = jest.spyOn(fs, "existsSync").mockReturnValue(true);
 
     // Set alert email in config for this test

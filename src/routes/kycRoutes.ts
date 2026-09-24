@@ -5,6 +5,7 @@ import {
   requestDownloadUrl,
   scanWebhook,
 } from "../controllers/kycController";
+import { createReward, listRewards } from "../controllers/kycValidatorRewardController";
 import { validateApiKey } from "../middleware/auth";
 import { apiKeyRateLimiter } from "../middleware/rateLimiter";
 
@@ -38,5 +39,17 @@ router.post("/documents/:id/confirm", confirmUpload);
  * Request a presigned S3 GET URL (blocked until virus scan passes).
  */
 router.get("/documents/:id/download-url", requestDownloadUrl);
+
+/**
+ * POST /kyc/rewards
+ * Create a validator reward for a completed KYC review.
+ */
+router.post("/rewards", createReward);
+
+/**
+ * GET /kyc/validators/:validatorId/rewards
+ * List all rewards for a given validator.
+ */
+router.get("/validators/:validatorId/rewards", listRewards);
 
 export default router;
