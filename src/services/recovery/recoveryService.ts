@@ -4,10 +4,16 @@
  */
 import bcrypt from "bcrypt";
 import { Buffer } from "buffer";
+import { createHash } from "crypto";
 import { prisma } from "../../config/database";
 import { generateApiKey } from "../../middleware/auth";
 import { logger } from "../../config/logger";
-import { signChallengeToken, verifyChallengeToken } from "../../utils/jwt";
+import {
+  revokeJti,
+  signChallengeToken,
+  verifyChallengeToken,
+  type ChallengePayload,
+} from "../../utils/jwt";
 import { getRabbitMQChannel, QUEUES } from "../../config/rabbitmq";
 import {
   verifyDevice,
@@ -15,10 +21,100 @@ import {
   DeviceFingerprint,
   isDeviceRateLimited,
 } from "./deviceVerification";
-import { checkRecoveryRateLimit, recordRecoveryAttempt } from "./rateLimitService";
+import {
+  checkRecoveryRateLimit,
+  recordRecoveryAttempt,
+  RECOVERY_OTP_ATTEMPT_PREFIX,
+  RECOVERY_OTP_MAX_ATTEMPTS,
+  type RecoveryRateLimitResult,
+} from "./rateLimitService";
 import { auditRecoveryEvent, detectSuspiciousPatterns, rotateUserSessions } from "./auditService";
 
 const OTP_EXPIRY_MINUTES = 10;
+export const RECOVERY_OTP_LOCKOUT_ERROR = "Too many attempts. Please request a new recovery code.";
+export const RECOVERY_OTP_UNAVAILABLE_ERROR = "Recovery verification temporarily unavailable.";
+
+function getRecoveryOtpAttemptKey(challengeToken: string): string {
+  return `${RECOVERY_OTP_ATTEMPT_PREFIX}:${createHash("sha256")
+    .update(challengeToken)
+    .digest("hex")}`;
+}
+
+function revokeRecoveryChallengeToken(payload: ChallengePayload): void {
+  if (payload.jti && typeof revokeJti === "function") {
+    revokeJti(payload.jti, payload.exp ?? Math.floor(Date.now() / 1000) + 300);
+  }
+}
+
+function getRecoveryChallengeAttemptCount(remainingAttempts = RECOVERY_OTP_MAX_ATTEMPTS): number {
+  return Math.max(1, RECOVERY_OTP_MAX_ATTEMPTS - remainingAttempts + 1);
+}
+
+async function recordRecoveryOtpAttempt(
+  payload: ChallengePayload,
+  attemptKey: string,
+  success: boolean,
+  reason: string,
+  deviceFingerprint?: DeviceFingerprint,
+): Promise<void> {
+  try {
+    await recordRecoveryAttempt(
+      payload.userId,
+      attemptKey,
+      success,
+      reason,
+      deviceFingerprint?.ip || "unknown",
+      deviceFingerprint?.userAgent,
+    );
+  } catch {
+    logger.error("Recovery: OTP attempt tracking unavailable", {
+      userId: payload.userId,
+      hasIp: Boolean(deviceFingerprint?.ip),
+    });
+    revokeRecoveryChallengeToken(payload);
+    throw new Error(RECOVERY_OTP_UNAVAILABLE_ERROR);
+  }
+}
+
+async function markRecoveryChallengeUsed(
+  payload: ChallengePayload,
+  challengeId: string,
+  now: Date,
+): Promise<void> {
+  try {
+    await prisma.otpChallenge.update({
+      where: { id: challengeId },
+      data: { usedAt: now },
+    });
+  } catch {
+    logger.error("Recovery: failed to update OTP challenge state", {
+      userId: payload.userId,
+    });
+    revokeRecoveryChallengeToken(payload);
+    throw new Error(RECOVERY_OTP_UNAVAILABLE_ERROR);
+  }
+}
+
+async function auditRecoveryOtpFailure(
+  payload: ChallengePayload,
+  deviceFingerprint: DeviceFingerprint | undefined,
+  attemptCount: number,
+  challengeLocked: boolean,
+  reason: string,
+): Promise<void> {
+  await auditRecoveryEvent({
+    eventType: "recovery_failed",
+    userId: payload.userId,
+    ip: deviceFingerprint?.ip,
+    userAgent: deviceFingerprint?.userAgent,
+    details: {
+      reason,
+      attemptCount,
+      challengeLocked,
+    },
+    risk: challengeLocked ? "high" : "medium",
+  });
+}
 
 export interface UnlockAppParams {
   identifier: string; // email or E.164 phone
@@ -177,7 +273,7 @@ export async function unlockApp(params: UnlockAppParams): Promise<UnlockAppResul
 
   const code = generateOtpCode();
   const codeHash = await bcrypt.hash(code, 10);
-  await prisma.otpChallenge.create({
+  const otpChallenge = await prisma.otpChallenge.create({
     data: {
       userId: user.id,
       codeHash,
@@ -188,7 +284,9 @@ export async function unlockApp(params: UnlockAppParams): Promise<UnlockAppResul
 
   await publishOtpToQueue({ channel, to, code });
 
-  const challenge_token = signChallengeToken(user.id);
+  const challenge_token = otpChallenge?.id
+    ? signChallengeToken(user.id, { otpChallengeId: otpChallenge.id })
+    : signChallengeToken(user.id);
 
   // Audit the recovery initiation
   await auditRecoveryEvent({
@@ -231,19 +329,44 @@ export async function verifyRecoveryOtp(
   params: VerifyRecoveryOtpParams,
 ): Promise<VerifyRecoveryOtpResult> {
   const { challenge_token, code, deviceFingerprint, trust_device } = params;
-  const payload = verifyChallengeToken(challenge_token);
+  let payload: ChallengePayload;
+
+  try {
+    payload = verifyChallengeToken(challenge_token, { consumeJti: false });
+    if (
+      !payload ||
+      typeof payload.userId !== "string" ||
+      payload.userId.length === 0 ||
+      (payload.otpChallengeId !== undefined && typeof payload.otpChallengeId !== "string")
+    ) {
+      throw new Error("Invalid challenge");
+    }
+  } catch {
+    throw new Error("Invalid or expired challenge");
+  }
 
   const now = new Date();
-  const challenge = await prisma.otpChallenge.findFirst({
-    where: {
+  let challenge: { id: string; codeHash: string } | null;
+  try {
+    challenge = await prisma.otpChallenge.findFirst({
+      where: {
+        ...(payload.otpChallengeId ? { id: payload.otpChallengeId } : {}),
+        userId: payload.userId,
+        expiresAt: { gt: now },
+        usedAt: null,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  } catch {
+    logger.error("Recovery: OTP challenge lookup unavailable", {
       userId: payload.userId,
-      expiresAt: { gt: now },
-      usedAt: null,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+    });
+    revokeRecoveryChallengeToken(payload);
+    throw new Error(RECOVERY_OTP_UNAVAILABLE_ERROR);
+  }
 
   if (!challenge) {
+    revokeRecoveryChallengeToken(payload);
     await auditRecoveryEvent({
       eventType: "recovery_failed",
       userId: payload.userId,
@@ -256,34 +379,122 @@ export async function verifyRecoveryOtp(
     throw new Error("Invalid or expired code");
   }
 
-  const match = await bcrypt.compare(code, challenge.codeHash);
-  if (!match) {
-    await auditRecoveryEvent({
-      eventType: "recovery_failed",
+  const ip = deviceFingerprint?.ip || "unknown";
+  const attemptKey = getRecoveryOtpAttemptKey(challenge_token);
+  let rateLimitResult: RecoveryRateLimitResult;
+  try {
+    rateLimitResult = await checkRecoveryRateLimit(
+      attemptKey,
+      payload.userId,
+      ip,
+      RECOVERY_OTP_ATTEMPT_PREFIX,
+    );
+  } catch {
+    logger.error("Recovery: OTP rate-limit store unavailable", {
       userId: payload.userId,
-      ip: deviceFingerprint?.ip,
-      userAgent: deviceFingerprint?.userAgent,
-      details: { reason: "Invalid OTP" },
-      risk: "medium",
+      hasIp: Boolean(deviceFingerprint?.ip),
     });
-
-    logger.warn("Recovery: invalid OTP", { userId: payload.userId });
-    throw new Error("Invalid code");
+    revokeRecoveryChallengeToken(payload);
+    throw new Error(RECOVERY_OTP_UNAVAILABLE_ERROR);
   }
 
-  // Mark OTP as used
-  await prisma.otpChallenge.update({
-    where: { id: challenge.id },
-    data: { usedAt: now },
-  });
+  const attemptCount = getRecoveryChallengeAttemptCount(rateLimitResult.remainingAttempts);
+  const challengeLocked = attemptCount >= RECOVERY_OTP_MAX_ATTEMPTS;
 
-  // Rotate existing sessions (revoke old API keys)
+  if (!rateLimitResult.allowed) {
+    await markRecoveryChallengeUsed(payload, challenge.id, now);
+    revokeRecoveryChallengeToken(payload);
+    await auditRecoveryOtpFailure(
+      payload,
+      deviceFingerprint,
+      RECOVERY_OTP_MAX_ATTEMPTS,
+      true,
+      "OTP verification rate limited",
+    );
+    logger.warn("Recovery: OTP verification rate limited", {
+      userId: payload.userId,
+      hasIp: Boolean(deviceFingerprint?.ip),
+      attemptCount: RECOVERY_OTP_MAX_ATTEMPTS,
+      challengeLocked: true,
+    });
+    throw new Error(RECOVERY_OTP_LOCKOUT_ERROR);
+  }
+
+  const rejectOtp = async (): Promise<never> => {
+    await recordRecoveryOtpAttempt(
+      payload,
+      attemptKey,
+      false,
+      `${RECOVERY_OTP_ATTEMPT_PREFIX}:invalid`,
+      deviceFingerprint,
+    );
+
+    if (challengeLocked) {
+      await markRecoveryChallengeUsed(payload, challenge.id, now);
+      revokeRecoveryChallengeToken(payload);
+    }
+
+    await auditRecoveryOtpFailure(
+      payload,
+      deviceFingerprint,
+      attemptCount,
+      challengeLocked,
+      "Invalid OTP",
+    );
+    logger.warn("Recovery: invalid OTP", {
+      userId: payload.userId,
+      hasIp: Boolean(deviceFingerprint?.ip),
+      attemptCount,
+      challengeLocked,
+    });
+    throw new Error(challengeLocked ? RECOVERY_OTP_LOCKOUT_ERROR : "Invalid code");
+  };
+
+  if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
+    return rejectOtp();
+  }
+
+  let match: boolean;
+  try {
+    match = await bcrypt.compare(code, challenge.codeHash);
+  } catch {
+    await recordRecoveryOtpAttempt(
+      payload,
+      attemptKey,
+      false,
+      `${RECOVERY_OTP_ATTEMPT_PREFIX}:verification_error`,
+      deviceFingerprint,
+    );
+    if (challengeLocked) {
+      await markRecoveryChallengeUsed(payload, challenge.id, now);
+      revokeRecoveryChallengeToken(payload);
+    }
+    logger.error("Recovery: OTP verification dependency unavailable", {
+      userId: payload.userId,
+      hasIp: Boolean(deviceFingerprint?.ip),
+      attemptCount,
+    });
+    throw new Error(RECOVERY_OTP_UNAVAILABLE_ERROR);
+  }
+
+  if (!match) {
+    return rejectOtp();
+  }
+
+  await recordRecoveryOtpAttempt(
+    payload,
+    attemptKey,
+    true,
+    `${RECOVERY_OTP_ATTEMPT_PREFIX}:success`,
+    deviceFingerprint,
+  );
+  await markRecoveryChallengeUsed(payload, challenge.id, now);
+  revokeRecoveryChallengeToken(payload);
+
   await rotateUserSessions(payload.userId);
 
-  // Generate new API key
   const apiKey = await generateApiKey(payload.userId, []);
 
-  // Trust device if requested
   if (trust_device && deviceFingerprint) {
     const deviceResult = await verifyDevice(payload.userId, deviceFingerprint);
     if (!deviceResult.isTrusted) {
@@ -301,7 +512,6 @@ export async function verifyRecoveryOtp(
     }
   }
 
-  // Audit successful recovery
   await auditRecoveryEvent({
     eventType: "recovery_completed",
     userId: payload.userId,
@@ -311,6 +521,7 @@ export async function verifyRecoveryOtp(
       apiKeyGenerated: true,
       sessionsRotated: true,
       deviceTrusted: trust_device,
+      otpAttemptCount: attemptCount,
     },
     risk: "medium",
   });
@@ -318,6 +529,7 @@ export async function verifyRecoveryOtp(
   logger.info("Recovery: OTP verified, new key issued, sessions rotated", {
     userId: payload.userId,
     sessionsRotated: true,
+    attemptCount,
   });
 
   return {

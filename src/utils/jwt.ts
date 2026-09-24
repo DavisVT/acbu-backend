@@ -66,6 +66,7 @@ const CHALLENGE_ISSUER = "acbu/auth";
 
 export interface ChallengePayload {
   userId: string;
+  otpChallengeId?: string;
   aud?: string;
   iss?: string;
   iat?: number;
@@ -91,11 +92,15 @@ function getChallengeSecret(): string {
  * Sign a 2FA challenge token for the given user (short-lived JWT).
  * Includes aud and iss claims for strict purpose binding.
  */
-export function signChallengeToken(userId: string): string {
+export function signChallengeToken(
+  userId: string,
+  options: { otpChallengeId?: string } = {},
+): string {
   const secret = getChallengeSecret();
 
   const payload: ChallengePayload = {
     userId,
+    ...(options.otpChallengeId ? { otpChallengeId: options.otpChallengeId } : {}),
     aud: CHALLENGE_AUDIENCE,
     iss: CHALLENGE_ISSUER,
   };
@@ -113,7 +118,10 @@ export function signChallengeToken(userId: string): string {
  * Enforces jti uniqueness — a token can only be used once (#288).
  * Throws if invalid, expired, already used, or used for wrong purpose.
  */
-export function verifyChallengeToken(token: string): ChallengePayload {
+export function verifyChallengeToken(
+  token: string,
+  options: { consumeJti?: boolean } = {},
+): ChallengePayload {
   const secret = getChallengeSecret();
 
   try {
@@ -161,9 +169,10 @@ export function verifyChallengeToken(token: string): ChallengePayload {
         });
         throw new Error("Challenge token has already been used");
       }
-      // Consume the token: add to deny-list until its natural expiry.
-      const exp = decoded.exp ?? Math.floor(Date.now() / 1000) + 300;
-      revokeJti(decoded.jti, exp);
+      if (options.consumeJti !== false) {
+        const exp = decoded.exp ?? Math.floor(Date.now() / 1000) + 300;
+        revokeJti(decoded.jti, exp);
+      }
     }
 
     return decoded;

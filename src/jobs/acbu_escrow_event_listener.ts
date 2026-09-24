@@ -12,6 +12,12 @@ const ESCROW_EFFECT_TYPES = ["contract_credited", "contract_debited", "contract_
 
 type EscrowEffectType = (typeof ESCROW_EFFECT_TYPES)[number];
 
+/**
+ * Narrow an inbound effect type to the closed union the queue schema accepts.
+ * `EscrowEvent["type"]` is a z.enum, so publishing a bare `string` is a type
+ * error — and would let an unvalidated value reach consumers if the filter in
+ * `listenToContractEvents` ever changes.
+ */
 function isEscrowEffectType(type: string): type is EscrowEffectType {
   return (ESCROW_EFFECT_TYPES as readonly string[]).includes(type);
 }
@@ -43,7 +49,6 @@ export async function startEscrowEventListener(): Promise<void> {
       if (!isEscrowEffectType(event.type)) {
         logger.warn("Escrow event with unexpected type reached handler", {
           type: event.type,
-          contractId: event.contractId,
           ledger: event.ledger,
         });
         return;
@@ -86,6 +91,8 @@ export async function startEscrowEventListener(): Promise<void> {
     }
   };
 
+  // Register the handler exactly once: EventListener appends to its "*" handler
+  // list, so a second registration makes every escrow effect publish twice.
   eventListener.listenToContractEvents(contractId, [...ESCROW_EFFECT_TYPES], handler);
   logger.info("Escrow event listener registered with validation", {
     contractId,
