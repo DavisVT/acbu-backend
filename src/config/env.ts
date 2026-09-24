@@ -77,6 +77,7 @@ const envSchema = z.object({
   USDC_ISSUER_TESTNET: z.string().trim().min(1).optional(),
   USDC_ISSUER_MAINNET: z.string().trim().min(1).optional(),
   STELLAR_TREASURY_ACCOUNT_ID: z.string().trim().min(1).optional(),
+  TESTNET_CUSTODIAL_BOOTSTRAP: z.string().default("xlm"),
   CORS_ORIGIN: z.string().optional(),
   CDN_URL: z.string().url().optional(),
 
@@ -406,7 +407,7 @@ export const config = {
     nativeAssetCode: ((): string => {
       const explicit = env.STELLAR_NATIVE_ASSET_CODE?.trim();
       if (explicit) return explicit.toUpperCase();
-      const bootstrapProfile = (env.TESTNET_CUSTODIAL_BOOTSTRAP ?? "").trim().toLowerCase();
+      const bootstrapProfile = (env.TESTNET_CUSTODIAL_BOOTSTRAP ?? "xlm").trim().toLowerCase();
       return bootstrapProfile.includes("pi") ? "PI" : "XLM";
     })(),
     /** Wallet activation strategy. Default keeps the current create-account path, but makes it explicit/configurable. */
