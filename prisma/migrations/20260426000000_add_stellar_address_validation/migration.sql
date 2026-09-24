@@ -31,7 +31,7 @@ BEGIN
     );
 
   IF invalid_count > 0 THEN
-    RAISE EXCEPTION 'Found % users with invalid stellar_address format. Please clean up data before applying constraint.', invalid_count;
+    RAISE EXCEPTION 'Found % users with invalid stellarAddress format. Please clean up data before applying constraint.', invalid_count;
   END IF;
 END $$;
 

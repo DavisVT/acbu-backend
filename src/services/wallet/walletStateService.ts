@@ -122,18 +122,13 @@ export async function fetchWalletBalance(userId: string): Promise<{
     };
   }
 
-  const horizonUrl =
-    process.env.STELLAR_HORIZON_URL || "https://horizon-testnet.stellar.org";
+  const horizonUrl = process.env.STELLAR_HORIZON_URL || "https://horizon-testnet.stellar.org";
   const assetCode = process.env.STELLAR_ACBU_ASSET_CODE || "ACBU";
   const assetIssuer = process.env.STELLAR_ACBU_ASSET_ISSUER || "";
   const cacheKey = [userId, horizonUrl, assetCode, assetIssuer].join("|");
   const cached = balanceCache.get(cacheKey);
 
-  if (
-    cached &&
-    cached.expiresAt > Date.now() &&
-    cached.walletVersion === user.walletVersion
-  ) {
+  if (cached && cached.expiresAt > Date.now() && cached.walletVersion === user.walletVersion) {
     return { snapshot: cached.value, walletVersion: user.walletVersion };
   }
 

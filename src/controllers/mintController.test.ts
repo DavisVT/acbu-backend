@@ -96,7 +96,9 @@ const mockedConvertLocalToUsdWithPrecision = jest.requireMock("../services/rates
 describe("mintController", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedAssertUserWalletAddress.mockImplementation(async (_userId, walletAddress) => walletAddress);
+    mockedAssertUserWalletAddress.mockImplementation(
+      async (_userId, walletAddress) => walletAddress,
+    );
     mockedCheckDepositLimits.mockResolvedValue(undefined);
     mockedIsMintingPaused.mockResolvedValue(false);
     mockedEnqueueUsdcConvertAndMint.mockResolvedValue(undefined);
@@ -132,12 +134,20 @@ describe("mintController", () => {
     mockedAssertUserWalletAddress.mockImplementation(async () => {
       throw new AppError("Wallet address does not match user", 403);
     });
-    mockedUserFindUnique.mockResolvedValue({ stellarAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF" });
+    mockedUserFindUnique.mockResolvedValue({
+      stellarAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    });
     const res = makeRes();
     const next = makeNext();
     await depositFromBasketCurrency(
       {
-        apiKey: { id: "key-1", userId: "user-1", organizationId: null, permissions: [], rateLimit: 100 },
+        apiKey: {
+          id: "key-1",
+          userId: "user-1",
+          organizationId: null,
+          permissions: [],
+          rateLimit: 100,
+        },
         body: {
           currency: "NGN",
           amount: "100",
@@ -160,7 +170,13 @@ describe("mintController", () => {
     const next = makeNext();
     await depositFromBasketCurrency(
       {
-        apiKey: { id: "key-1", userId: "user-1", organizationId: null, permissions: [], rateLimit: 100 },
+        apiKey: {
+          id: "key-1",
+          userId: "user-1",
+          organizationId: null,
+          permissions: [],
+          rateLimit: 100,
+        },
         body: {
           currency: "JPY",
           amount: "100",
@@ -228,7 +244,13 @@ describe("mintController", () => {
     const next = makeNext();
     await depositFromBasketCurrency(
       {
-        apiKey: { id: "key-1", userId: "user-1", organizationId: null, permissions: [], rateLimit: 100 },
+        apiKey: {
+          id: "key-1",
+          userId: "user-1",
+          organizationId: null,
+          permissions: [],
+          rateLimit: 100,
+        },
         get: jest.fn().mockReturnValue("repeat-key"),
         body: {
           currency: "NGN",
@@ -261,7 +283,13 @@ describe("mintController", () => {
     const next = makeNext();
     await mintFromUsdc(
       {
-        apiKey: { id: "key-1", userId: "user-1", organizationId: null, permissions: [], rateLimit: 100 },
+        apiKey: {
+          id: "key-1",
+          userId: "user-1",
+          organizationId: null,
+          permissions: [],
+          rateLimit: 100,
+        },
         get: jest.fn().mockReturnValue("duplicate-usdc"),
         body: {
           usdc_amount: "10",

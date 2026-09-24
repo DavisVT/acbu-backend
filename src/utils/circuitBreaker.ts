@@ -36,10 +36,7 @@ export class CircuitBreaker {
 
     if (this.state === "OPEN") {
       const now = Date.now();
-      if (
-        this.lastFailureTime &&
-        now - this.lastFailureTime >= this.options.cooldownMs
-      ) {
+      if (this.lastFailureTime && now - this.lastFailureTime >= this.options.cooldownMs) {
         this.transitionTo("HALF_OPEN");
         return true;
       }
@@ -75,10 +72,7 @@ export class CircuitBreaker {
     if (this.state === "HALF_OPEN") {
       // Any failure in half-open immediately opens circuit
       this.transitionTo("OPEN");
-    } else if (
-      this.state === "CLOSED" &&
-      this.failureCount >= this.options.failureThreshold
-    ) {
+    } else if (this.state === "CLOSED" && this.failureCount >= this.options.failureThreshold) {
       this.transitionTo("OPEN");
     }
   }

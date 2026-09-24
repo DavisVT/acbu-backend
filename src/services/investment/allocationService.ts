@@ -19,9 +19,7 @@ import { prisma } from "../../config/database";
 import { reserveTracker, ReserveTracker } from "../reserve/ReserveTracker";
 
 /** Max fraction of investment_savings segment that can be deployed (0-1). Default 0.5. */
-const DEPLOYABLE_FRACTION = Number(
-  process.env.INVESTMENT_DEPLOYABLE_FRACTION || "0.5",
-);
+const DEPLOYABLE_FRACTION = Number(process.env.INVESTMENT_DEPLOYABLE_FRACTION || "0.5");
 
 export interface AllocationSummary {
   segment: string;
@@ -44,9 +42,7 @@ export interface StrategyAllocation {
  * Get total reserve value for the investment_savings segment (from ReserveTracker).
  */
 export async function getInvestmentSavingsReserveValueUsd(): Promise<number> {
-  const status = await reserveTracker.getReserveStatus(
-    ReserveTracker.SEGMENT_INVESTMENT_SAVINGS,
-  );
+  const status = await reserveTracker.getReserveStatus(ReserveTracker.SEGMENT_INVESTMENT_SAVINGS);
   return status.totalReserveValueUsd;
 }
 
@@ -62,9 +58,7 @@ export async function computeDeployableAllocation(): Promise<AllocationSummary> 
   const totalReserveDecimal = new Decimal(totalReserveValueUsd);
 
   // Compute deployable from reserve policy
-  const deployableFraction = new Decimal(
-    Math.min(1, Math.max(0, DEPLOYABLE_FRACTION)),
-  );
+  const deployableFraction = new Decimal(Math.min(1, Math.max(0, DEPLOYABLE_FRACTION)));
   const deployableFromReserve = totalReserveDecimal.mul(deployableFraction);
 
   // Fetch total deployed notional across all active strategies
@@ -102,9 +96,7 @@ export async function computeDeployableAllocation(): Promise<AllocationSummary> 
  * @param strategyId - UUID of the investment strategy
  * @returns StrategyAllocation with available capacity
  */
-export async function getStrategyAllocation(
-  strategyId: string,
-): Promise<StrategyAllocation> {
+export async function getStrategyAllocation(strategyId: string): Promise<StrategyAllocation> {
   const strategy = await prisma.investmentStrategy.findUnique({
     where: { id: strategyId },
   });
@@ -114,9 +106,7 @@ export async function getStrategyAllocation(
   }
 
   if (strategy.status !== "active") {
-    throw new Error(
-      `Strategy ${strategy.name} is ${strategy.status}, not active`,
-    );
+    throw new Error(`Strategy ${strategy.name} is ${strategy.status}, not active`);
   }
 
   const policyLimit = strategy.policyLimitUsd;
@@ -126,9 +116,7 @@ export async function getStrategyAllocation(
   const available = Decimal.max(new Decimal(0), policyLimit.sub(deployed));
 
   // Utilization = (deployed / limit) * 100
-  const utilization = policyLimit.isZero()
-    ? new Decimal(0)
-    : deployed.div(policyLimit).mul(100);
+  const utilization = policyLimit.isZero() ? new Decimal(0) : deployed.div(policyLimit).mul(100);
 
   return {
     strategyId: strategy.id,
@@ -155,10 +143,7 @@ export async function getStrategyAllocation(
  * @param amountUsd - Amount to allocate (Decimal string)
  * @throws PolicyViolationError if allocation would exceed limit
  */
-export async function allocateToStrategy(
-  strategyId: string,
-  amountUsd: string,
-): Promise<void> {
+export async function allocateToStrategy(strategyId: string, amountUsd: string): Promise<void> {
   const amount = new Decimal(amountUsd);
 
   if (amount.lte(0)) {
@@ -184,9 +169,7 @@ export async function allocateToStrategy(
     const newDeployed = strategy.deployedNotionalUsd.add(amount);
 
     if (newDeployed.gt(strategy.policyLimitUsd)) {
-      const available = strategy.policyLimitUsd.sub(
-        strategy.deployedNotionalUsd,
-      );
+      const available = strategy.policyLimitUsd.sub(strategy.deployedNotionalUsd);
       throw new PolicyViolationError(
         `Allocation of ${amount.toFixed(2)} USD would exceed policy limit. ` +
           `Available: ${available.toFixed(2)} USD, ` +
@@ -209,10 +192,7 @@ export async function allocateToStrategy(
  * @param strategyId - UUID of the investment strategy
  * @param amountUsd - Amount to release (Decimal string)
  */
-export async function deallocateFromStrategy(
-  strategyId: string,
-  amountUsd: string,
-): Promise<void> {
+export async function deallocateFromStrategy(strategyId: string, amountUsd: string): Promise<void> {
   const amount = new Decimal(amountUsd);
 
   if (amount.lte(0)) {
@@ -228,10 +208,7 @@ export async function deallocateFromStrategy(
       throw new Error(`Strategy ${strategyId} not found`);
     }
 
-    const newDeployed = Decimal.max(
-      new Decimal(0),
-      strategy.deployedNotionalUsd.sub(amount),
-    );
+    const newDeployed = Decimal.max(new Decimal(0), strategy.deployedNotionalUsd.sub(amount));
 
     await tx.investmentStrategy.update({
       where: { id: strategyId },

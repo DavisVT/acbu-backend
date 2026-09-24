@@ -1,0 +1,66 @@
+{
+  "_comment": "Canonical event shapes expected by ACBU backend Horizon effect listeners. Verified against live Horizon testnet/mainnet contract_credited and contract_debited payloads (2026-08-22). When compiled WASM is added under contracts/ or wasm/, prefer generating Soroban contract-event shapes via stellar contract bindings json.",
+  "version": "0.3.0",
+  "last_updated": "2026-08-22",
+  "source": "live Horizon effects + go-stellar-sdk ContractCredited/ContractDebited",
+  "events": [
+    {
+      "name": "ContractCredited",
+      "contract": "any (SAC balance credit)",
+      "horizon_effect_types": ["contract_credited"],
+      "horizon_type_i": 96,
+      "required_fields": ["id", "account", "contract", "amount", "type", "created_at"],
+      "optional_fields": ["asset_type", "asset_code", "asset_issuer", "paging_token", "_links"],
+      "notes": "Live payload does not include recipient, to, value, or transaction_hash. Resolve tx hash via _links.operation → operation resource. Parsed by parseHorizonContractBalanceEffect."
+    },
+    {
+      "name": "ContractDebited",
+      "contract": "any (SAC balance debit)",
+      "horizon_effect_types": ["contract_debited"],
+      "horizon_type_i": 97,
+      "required_fields": ["id", "account", "contract", "amount", "type", "created_at"],
+      "optional_fields": ["asset_type", "asset_code", "asset_issuer", "paging_token", "_links"],
+      "notes": "Same field shape as ContractCredited. Used by burn listener primarily for operation/tx correlation."
+    },
+    {
+      "name": "MintEvent",
+      "contract": "minting",
+      "horizon_effect_types": ["contract_credited", "contract_effect"],
+      "required_fields": ["amount", "account"],
+      "optional_fields": ["contract", "asset_type", "asset_code", "_links"],
+      "notes": "Application-level mapping of ContractCredited for the minting contract. Prefer parseHorizonContractBalanceEffect in acbu_minting_event_listener."
+    },
+    {
+      "name": "BurnEvent",
+      "contract": "burning",
+      "horizon_effect_types": ["contract_debited", "contract_effect"],
+      "required_fields": ["amount", "account"],
+      "optional_fields": ["contract", "_links"],
+      "notes": "Application-level mapping of ContractDebited for the burning contract."
+    },
+    {
+      "name": "EscrowEvent",
+      "contract": "escrow",
+      "horizon_effect_types": ["contract_credited", "contract_debited", "contract_effect"],
+      "required_fields": [],
+      "optional_fields": ["amount", "account", "contract"],
+      "notes": "Currently forwards validated payload to RabbitMQ via escrowEventProducer."
+    },
+    {
+      "name": "LendingPoolEvent",
+      "contract": "lendingPool",
+      "horizon_effect_types": ["contract_effect"],
+      "required_fields": [],
+      "optional_fields": ["amount", "account"],
+      "notes": "Lightweight listener; tighten when contract events are available via RPC getEvents."
+    },
+    {
+      "name": "SavingsVaultEvent",
+      "contract": "savingsVault",
+      "horizon_effect_types": ["contract_effect"],
+      "required_fields": [],
+      "optional_fields": ["amount", "account"],
+      "notes": "Lightweight listener; tighten when contract events are available via RPC getEvents."
+    }
+  ]
+}

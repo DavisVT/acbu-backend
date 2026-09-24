@@ -14,6 +14,7 @@ function setFiatWebhookDeprecationHeaders(res: Response): void {
 }
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
+import { z } from "zod";
 import { config } from "../config/env";
 import { logger, logFinancialEvent } from "../config/logger";
 import { prisma } from "../config/database";
@@ -23,21 +24,20 @@ import { reconcileBillsWebhook } from "../services/bills";
 import type { FinancialEventStatus } from "../types/logging";
 
 // ── Dev/stage mock bypass ────────────────────────────────────────────────────
-// When WEBHOOK_SIGNATURE_BYPASS=true AND NODE_ENV is not production,
-// signature verification is skipped entirely. This allows local development
-// and CI environments to send test payloads without real secrets.
-// Never set this variable in production — the boot guard in env.ts will
-// reject a missing secret before this code is even reached.
-const isDev = config.nodeEnv !== "production";
+// The bypass is deliberately limited to local/test environments. env.ts also
+// rejects this setting during startup for staging-facing deployments.
 const bypassEnabled =
-  isDev && process.env.WEBHOOK_SIGNATURE_BYPASS === "true";
+  ["development", "test"].includes(config.nodeEnv) &&
+  process.env.WEBHOOK_SIGNATURE_BYPASS === "true";
 
 // Maximum allowed clock drift in seconds between the webhook timestamp and server time.
 // Rejects replayed webhooks that fall outside this window. Default: 300 s (±5 min).
-const WEBHOOK_TIMESTAMP_TOLERANCE_S = parseInt(
-  process.env.WEBHOOK_TIMESTAMP_TOLERANCE_S || "300",
-  10,
-);
+const WEBHOOK_TIMESTAMP_TOLERANCE_S = z.coerce
+  .number()
+  .int()
+  .min(1)
+  .max(86400)
+  .parse(process.env.WEBHOOK_TIMESTAMP_TOLERANCE_S || "300");
 
 /**
  * Validate a webhook timestamp (Unix seconds or ISO-8601) against server time.
@@ -53,11 +53,42 @@ function isTimestampValid(raw: string | undefined): boolean {
   return Math.abs(nowS - eventS) <= WEBHOOK_TIMESTAMP_TOLERANCE_S;
 }
 
+/**
+ * Validate that the request Content-Type is application/json.
+ * Rejects requests with multipart/form-data, text/xml, or other content types
+ * that could bypass JSON body parsing middleware.
+ */
+function isContentTypeJson(req: Request): boolean {
+  const contentType = req.headers["content-type"];
+  if (!contentType) return false;
+  // Accept application/json with or without charset parameter
+  return contentType.startsWith("application/json");
+}
+
 if (bypassEnabled) {
   logger.warn(
     "WEBHOOK_SIGNATURE_BYPASS is enabled — webhook signature verification " +
-      "is DISABLED. This must never be set in production.",
+      "is DISABLED for development/test only. Do not use this setting in a staging-facing deployment.",
   );
+}
+
+function getWebhookEventId(payload: Record<string, unknown>): string | undefined {
+  const eventId = payload.event_id;
+  return typeof eventId === "string" && eventId.trim() ? eventId.trim() : undefined;
+}
+
+function isWebhookEventIdConflict(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
+}
+
+function sendDuplicateWebhookResponse(res: Response): void {
+  setFiatWebhookDeprecationHeaders(res);
+  res.status(200).json({ status: "ok", duplicate: true, deprecated: true });
 }
 
 // ── Flutterwave Webhook ──────────────────────────────────────────────────────
@@ -75,6 +106,15 @@ export function verifyFlutterwaveSignature(
     return;
   }
 
+  // #296: Enforce Content-Type to prevent bypass of JSON body parsing
+  if (!isContentTypeJson(req)) {
+    logger.warn("Flutterwave webhook rejected: invalid Content-Type", {
+      contentType: req.headers["content-type"],
+    });
+    res.status(415).json({ error: "Content-Type must be application/json" });
+    return;
+  }
+
   const secret = config.flutterwave.webhookSecret;
   if (!secret) {
     // Should never be reached in production due to boot guard in env.ts.
@@ -88,16 +128,12 @@ export function verifyFlutterwaveSignature(
       503,
       ErrorCodes.CONFIG_ERROR,
     );
-
   }
 
   const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
   if (!rawBody || !Buffer.isBuffer(rawBody)) {
-    throw new AppError(
-      "Raw body required for verification",
-      400,
-      ErrorCodes.RAW_BODY_REQUIRED,
-    );
+    res.status(400).json({ error: "Raw body required for verification" });
+    return;
   }
 
   // #390: Reject requests whose timestamp falls outside the tolerance window.
@@ -114,17 +150,11 @@ export function verifyFlutterwaveSignature(
 
   const received = req.headers["verif-hash"] as string | undefined;
   if (!received) {
-    throw new AppError(
-      "Missing verif-hash header",
-      401,
-      ErrorCodes.MISSING_SIGNATURE,
-    );
+    res.status(401).json({ error: "Missing verif-hash header" });
+    return;
   }
 
-  const computed = crypto
-    .createHmac("sha256", secret)
-    .update(rawBody)
-    .digest("hex");
+  const computed = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
 
   // Normalise to equal-length buffers before timingSafeEqual to prevent
   // length-leaking side channels. A mismatched length still fails below.
@@ -145,7 +175,8 @@ export function verifyFlutterwaveSignature(
     return;
   }
   logger.warn("Flutterwave webhook signature mismatch");
-  throw new AppError("Invalid signature", 401, ErrorCodes.INVALID_SIGNATURE);
+  res.status(401).json({ error: "Invalid signature" });
+  return;
 }
 
 // ── Paystack Webhook ────────────────────────────────────────────────────────
@@ -167,6 +198,15 @@ export function verifyPaystackSignature(
     return;
   }
 
+  // #296: Enforce Content-Type to prevent bypass of JSON body parsing
+  if (!isContentTypeJson(req)) {
+    logger.warn("Paystack webhook rejected: invalid Content-Type", {
+      contentType: req.headers["content-type"],
+    });
+    res.status(415).json({ error: "Content-Type must be application/json" });
+    return;
+  }
+
   const secret = config.paystack.secretKey;
   if (!secret) {
     // Should never be reached in production due to boot guard in env.ts.
@@ -179,16 +219,12 @@ export function verifyPaystackSignature(
       503,
       ErrorCodes.CONFIG_ERROR,
     );
-
   }
 
   const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
   if (!rawBody || !Buffer.isBuffer(rawBody)) {
-    throw new AppError(
-      "Raw body required for verification",
-      400,
-      ErrorCodes.RAW_BODY_REQUIRED,
-    );
+    res.status(400).json({ error: "Raw body required for verification" });
+    return;
   }
 
   // #390: Reject requests whose timestamp falls outside the tolerance window.
@@ -205,17 +241,11 @@ export function verifyPaystackSignature(
 
   const received = req.headers["x-paystack-signature"] as string | undefined;
   if (!received) {
-    throw new AppError(
-      "Missing x-paystack-signature header",
-      401,
-      ErrorCodes.MISSING_SIGNATURE,
-    );
+    res.status(401).json({ error: "Missing x-paystack-signature header" });
+    return;
   }
 
-  const computed = crypto
-    .createHmac("sha512", secret)
-    .update(rawBody)
-    .digest("hex");
+  const computed = crypto.createHmac("sha512", secret).update(rawBody).digest("hex");
 
   // Use timing-safe comparison (same pattern as Flutterwave above) to prevent
   // timing side-channel attacks. Paystack previously used string equality (===).
@@ -233,7 +263,8 @@ export function verifyPaystackSignature(
 
   if (!signatureValid) {
     logger.warn("Paystack webhook signature mismatch");
-    throw new AppError("Invalid signature", 401, ErrorCodes.INVALID_SIGNATURE);
+    res.status(401).json({ error: "Invalid signature" });
+    return;
   }
   next();
 }
@@ -260,6 +291,7 @@ export async function handlePaystackWebhook(
     };
     const eventType = payload.event ?? "unknown";
     const data = payload.data ?? {};
+    const eventId = getWebhookEventId(payload as Record<string, unknown>);
     logger.warn("Paystack webhook received (deprecated path)", {
       eventType,
       reference: data.reference,
@@ -275,8 +307,24 @@ export async function handlePaystackWebhook(
     const paystackFinancialStatus: FinancialEventStatus =
       paystackStatusMap[data.status ?? ""] ?? "pending";
     const paystackCorrelationId =
-      (req.headers["x-request-id"] as string | undefined) ??
-      crypto.randomUUID();
+      (req.headers["x-request-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      await prisma.webhook.create({
+        data: {
+          eventId,
+          eventType: `paystack:${String(eventType)}`,
+          payload: payload as object,
+          status: "processed",
+        },
+      });
+    } catch (error) {
+      if (eventId && isWebhookEventIdConflict(error)) {
+        sendDuplicateWebhookResponse(res);
+        return;
+      }
+      throw error;
+    }
 
     logFinancialEvent({
       event: "webhook.received",
@@ -285,18 +333,10 @@ export async function handlePaystackWebhook(
       transactionId: data.reference ?? paystackCorrelationId,
       userId: paystackCorrelationId,
       accountId: paystackCorrelationId,
-      idempotencyKey: data.reference ?? paystackCorrelationId,
+      idempotencyKey: eventId ?? data.reference ?? paystackCorrelationId,
       correlationId: paystackCorrelationId,
       amount: data.amount ?? 0,
       currency: data.currency ?? "NGN",
-    });
-
-    await prisma.webhook.create({
-      data: {
-        eventType: `paystack:${String(eventType)}`,
-        payload: payload as object,
-        status: "processed",
-      },
     });
 
     if (eventType === "charge.success" && data.status === "success") {
@@ -340,6 +380,7 @@ export async function handleFlutterwaveWebhook(
     };
     const eventType = payload.event ?? payload.type ?? "unknown";
     const data = payload.data ?? {};
+    const eventId = getWebhookEventId(payload as Record<string, unknown>);
     logger.warn("Flutterwave webhook received (deprecated path)", {
       eventType,
       tx_ref: data.tx_ref,
@@ -353,11 +394,26 @@ export async function handleFlutterwaveWebhook(
       failed: "failed",
       reversed: "reversed",
     };
-    const flwFinancialStatus: FinancialEventStatus =
-      flwStatusMap[data.status ?? ""] ?? "pending";
+    const flwFinancialStatus: FinancialEventStatus = flwStatusMap[data.status ?? ""] ?? "pending";
     const flwCorrelationId =
-      (req.headers["x-request-id"] as string | undefined) ??
-      crypto.randomUUID();
+      (req.headers["x-request-id"] as string | undefined) ?? crypto.randomUUID();
+
+    try {
+      await prisma.webhook.create({
+        data: {
+          eventId,
+          eventType: String(eventType),
+          payload: payload as object,
+          status: "processed",
+        },
+      });
+    } catch (error) {
+      if (eventId && isWebhookEventIdConflict(error)) {
+        sendDuplicateWebhookResponse(res);
+        return;
+      }
+      throw error;
+    }
 
     logFinancialEvent({
       event: "webhook.received",
@@ -366,19 +422,11 @@ export async function handleFlutterwaveWebhook(
       transactionId: data.tx_ref ?? flwCorrelationId,
       userId: flwCorrelationId,
       accountId: flwCorrelationId,
-      idempotencyKey: data.tx_ref ?? flwCorrelationId,
+      idempotencyKey: eventId ?? data.tx_ref ?? flwCorrelationId,
       correlationId: flwCorrelationId,
       amount: data.amount ?? 0,
       currency: data.currency ?? "NGN",
       providerRef: data.flw_ref,
-    });
-
-    await prisma.webhook.create({
-      data: {
-        eventType: String(eventType),
-        payload: payload as object,
-        status: "processed",
-      },
     });
 
     if (eventType === "charge.completed" || data.status === "successful") {
@@ -417,6 +465,15 @@ export function verifyBillsWebhookSignature(
     return;
   }
 
+  // #296: Enforce Content-Type to prevent bypass of JSON body parsing
+  if (!isContentTypeJson(req)) {
+    logger.warn("Bills webhook rejected: invalid Content-Type", {
+      contentType: req.headers["content-type"],
+    });
+    res.status(415).json({ error: "Content-Type must be application/json" });
+    return;
+  }
+
   const secret = config.bills.webhookSecret;
   if (!secret) {
     // Should never be reached in production due to boot guard in env.ts.
@@ -433,11 +490,7 @@ export function verifyBillsWebhookSignature(
 
   const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
   if (!rawBody || !Buffer.isBuffer(rawBody)) {
-    throw new AppError(
-      "Raw body required for verification",
-      400,
-      ErrorCodes.RAW_BODY_REQUIRED,
-    );
+    throw new AppError("Raw body required for verification", 400, ErrorCodes.RAW_BODY_REQUIRED);
   }
 
   const timestamp = req.headers["x-bills-timestamp"] as string | undefined;
@@ -452,11 +505,7 @@ export function verifyBillsWebhookSignature(
 
   const received = req.headers["x-bills-signature"] as string | undefined;
   if (!received) {
-    throw new AppError(
-      "Missing x-bills-signature header",
-      401,
-      ErrorCodes.MISSING_SIGNATURE,
-    );
+    throw new AppError("Missing x-bills-signature header", 401, ErrorCodes.MISSING_SIGNATURE);
   }
 
   const computed = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
@@ -510,9 +559,7 @@ export async function handleBillsWebhook(
     }
 
     const body = (req.body || {}) as Record<string, unknown>;
-    const transactionId = String(
-      body.transaction_id ?? body.transactionId ?? "",
-    ).trim();
+    const transactionId = String(body.transaction_id ?? body.transactionId ?? "").trim();
     const providerReference = String(
       body.provider_reference ?? body.providerReference ?? "",
     ).trim();
@@ -523,8 +570,7 @@ export async function handleBillsWebhook(
     const currency = String(body.currency ?? "NGN")
       .trim()
       .toUpperCase();
-    const reason =
-      body.reason == null ? undefined : String(body.reason).trim() || undefined;
+    const reason = body.reason == null ? undefined : String(body.reason).trim() || undefined;
 
     if (!transactionId) {
       throw new AppError("transaction_id is required", 400);
@@ -533,10 +579,7 @@ export async function handleBillsWebhook(
       throw new AppError("provider_reference is required", 400);
     }
     if (!["completed", "failed", "refunded"].includes(status)) {
-      throw new AppError(
-        "status must be one of completed, failed, refunded",
-        400,
-      );
+      throw new AppError("status must be one of completed, failed, refunded", 400);
     }
     if (!Number.isFinite(amount) || amount < 0) {
       throw new AppError("amount must be a non-negative number", 400);

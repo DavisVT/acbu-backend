@@ -434,7 +434,7 @@ Before deploying to production:
 
 - [ ] Run migration: `prisma migrate deploy`
 - [ ] Verify indexes created: `SELECT * FROM pg_indexes WHERE tablename IN ('reserves', 'oracle_rates', 'transactions')`
-- [ ] Run test suite: `npm test -- src/services/treasury/`
+- [ ] Run test suite: `pnpm test -- src/services/treasury/`
 - [ ] Load test with production data size
 - [ ] Configure tolerance based on SLA requirements
 - [ ] Monitor logs for reconciliation failures in first 24h

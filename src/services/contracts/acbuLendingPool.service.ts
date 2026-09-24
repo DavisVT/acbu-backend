@@ -33,9 +33,7 @@ export class LendingPoolService {
     this.contractClient = contractClient;
   }
 
-  async deposit(
-    params: DepositParams,
-  ): Promise<{ transactionHash: string; newBalance: string }> {
+  async deposit(params: DepositParams): Promise<{ transactionHash: string; newBalance: string }> {
     const sourceAccount = stellarClient.getKeypair()?.publicKey();
     if (!sourceAccount) throw new Error("No source account available");
 
@@ -74,11 +72,9 @@ export class LendingPoolService {
   }
 
   async getBalance(lender: string): Promise<string> {
-    const result = await this.contractClient.readContract(
-      this.contractId,
-      "get_balance",
-      [ContractClient.toScVal(lender)],
-    );
+    const result = await this.contractClient.readContract(this.contractId, "get_balance", [
+      ContractClient.toScVal(lender),
+    ]);
     const balance = ContractClient.fromScVal(result);
     return balance.toString();
   }
@@ -121,11 +117,7 @@ export class LendingPoolService {
   }
 
   async isPaused(): Promise<boolean> {
-    const result = await this.contractClient.readContract(
-      this.contractId,
-      "is_paused",
-      [],
-    );
+    const result = await this.contractClient.readContract(this.contractId, "is_paused", []);
     return ContractClient.fromScVal(result) as boolean;
   }
 }

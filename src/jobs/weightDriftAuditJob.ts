@@ -21,10 +21,8 @@ import { config } from "../config/env";
 
 const DEFAULT_INTERVAL_DAYS = 7; // Run weekly
 const INTERVAL_MS =
-  (parseInt(
-    process.env.WEIGHT_DRIFT_AUDIT_INTERVAL_DAYS || String(DEFAULT_INTERVAL_DAYS),
-    10,
-  ) || DEFAULT_INTERVAL_DAYS) *
+  (parseInt(process.env.WEIGHT_DRIFT_AUDIT_INTERVAL_DAYS || String(DEFAULT_INTERVAL_DAYS), 10) ||
+    DEFAULT_INTERVAL_DAYS) *
   24 *
   60 *
   60 *
@@ -135,18 +133,18 @@ Created At: ${new Date().toISOString()}
 `;
 
     // 4. Send notification to admins (configurable via env)
-    if (config.ADMIN_NOTIFICATION_EMAIL) {
+    const adminNotificationEmail = config.notification.alertEmail;
+    if (adminNotificationEmail) {
       try {
-        await sendEmail({
-          to: config.ADMIN_NOTIFICATION_EMAIL,
-          subject: `[ACBU] Weekly Weight Drift Audit - ${audit.currenciesExceedingThreshold > 0 ? "ACTION REQUIRED" : "OK"}`,
-          body: emailBody,
-          html: `<pre>${emailBody}</pre>`,
-        });
+        await sendEmail(
+          adminNotificationEmail,
+          `[ACBU] Weekly Weight Drift Audit - ${audit.currenciesExceedingThreshold > 0 ? "ACTION REQUIRED" : "OK"}`,
+          emailBody,
+        );
 
         logger.info("Weight drift audit email sent", {
           auditId: audit.auditId,
-          recipientCount: config.ADMIN_NOTIFICATION_EMAIL.split(",").length,
+          recipientCount: adminNotificationEmail.split(",").length,
         });
       } catch (e) {
         logger.warn("Failed to send weight drift audit email", {
@@ -185,9 +183,7 @@ export async function startWeightDriftAuditScheduler(): Promise<void> {
         // Run audit immediately on first boot if configured
         if (process.env.WEIGHT_DRIFT_AUDIT_RUN_ON_STARTUP === "true") {
           await runWeightDriftAuditOnce();
-          logger.info(
-            "Startup weight drift audit completed, scheduling next run",
-          );
+          logger.info("Startup weight drift audit completed, scheduling next run");
         }
 
         // Calculate next run (Monday 00:00 UTC by default)

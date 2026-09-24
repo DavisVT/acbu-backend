@@ -1,19 +1,19 @@
 /**
  * Fee policy: dynamic fees based on reserve levels (and optional demand).
  * Spread: buy/sell spread for rates/quote (0.2–0.3%).
- * 
+ *
  * FEE TIER SPECIFICATION:
  * ========================
  * Mint Fees (based on reserve ratio):
  * - Normal: 30 BPS (0.30%) when ratio >= minRatio (1.02)
  * - Stressed: 50 BPS (0.50%) when ratio < minRatio
  * - Max cap: 100 BPS (1.00%)
- * 
+ *
  * Burn Fees (based on currency reserve weight vs target):
  * - Low Reserve (<85% of target): 200 BPS (2.00%) - discourage burns
  * - Normal (85-115% of target): 10 BPS (0.10%) - standard fee
  * - High Reserve (>115% of target): 5 BPS (0.05%) - encourage burns
- * 
+ *
  * Spread:
  * - Default: 25 BPS (0.25%)
  */
@@ -56,7 +56,7 @@ const MAX_SANITY_FEE_BPS = 500;
 function validateFeeSanity(feeBps: number, context: string): void {
   if (feeBps < MIN_SANITY_FEE_BPS || feeBps > MAX_SANITY_FEE_BPS) {
     throw new Error(
-      `Fee sanity check failed for ${context}: ${feeBps} BPS is outside acceptable range [${MIN_SANITY_FEE_BPS}, ${MAX_SANITY_FEE_BPS}]`
+      `Fee sanity check failed for ${context}: ${feeBps} BPS is outside acceptable range [${MIN_SANITY_FEE_BPS}, ${MAX_SANITY_FEE_BPS}]`,
     );
   }
 }
@@ -70,30 +70,28 @@ export function getSpreadBps(): number {
 
 /**
  * Get fee in basis points for mint. Fee increases when reserve ratio is low.
- * 
+ *
  * Fee Structure:
  * - ratio >= minRatio (1.02): BASE_MINT_FEE_BPS (30 BPS)
  * - ratio < minRatio: STRESSED_MINT_FEE_BPS (50 BPS)
  * - Capped at MAX_MINT_FEE_BPS (100 BPS)
  */
 export async function getMintFeeBps(_currency?: string): Promise<number> {
-  const ratio = await reserveTracker.calculateReserveRatio(
-    ReserveTracker.SEGMENT_TRANSACTIONS,
-  );
-  
+  const ratio = await reserveTracker.calculateReserveRatio(ReserveTracker.SEGMENT_TRANSACTIONS);
+
   let feeBps: number;
   if (ratio < config.reserve.minRatio) {
     feeBps = STRESSED_MINT_FEE_BPS;
   } else {
     feeBps = BASE_MINT_FEE_BPS;
   }
-  
+
   // Apply cap
   feeBps = Math.min(feeBps, MAX_MINT_FEE_BPS);
-  
+
   // Sanity check
   validateFeeSanity(feeBps, `mint (ratio: ${ratio.toFixed(4)})`);
-  
+
   return feeBps;
 }
 
@@ -102,34 +100,30 @@ export async function getMintFeeBps(_currency?: string): Promise<number> {
  * - Currency reserve < 85% of target → 200 BPS (discourage burns)
  * - Currency reserve 85-115% of target → 10 BPS (normal)
  * - Currency reserve > 115% of target → 5 BPS (encourage burns)
- * 
+ *
  * This creates the correct economic incentive: when a currency is scarce in reserves,
  * we charge higher fees to discourage withdrawals. When abundant, we charge lower fees
  * to encourage rebalancing.
  */
 export async function getBurnFeeBps(currency: string): Promise<number> {
-  const status = await reserveTracker.getReserveStatus(
-    ReserveTracker.SEGMENT_TRANSACTIONS,
-  );
+  const status = await reserveTracker.getReserveStatus(ReserveTracker.SEGMENT_TRANSACTIONS);
   const curr = status.currencies.find((c) => c.currency === currency);
-  
+
   if (!curr) {
-    throw new Error(
-      `Currency ${currency} not found in reserve status. Cannot calculate burn fee.`
-    );
+    throw new Error(`Currency ${currency} not found in reserve status. Cannot calculate burn fee.`);
   }
-  
+
   const targetWeight = curr.targetWeight;
   const actualWeight = curr.actualWeight;
-  
+
   if (targetWeight <= 0) {
     throw new Error(
-      `Invalid target weight for ${currency}: ${targetWeight}. Cannot calculate burn fee.`
+      `Invalid target weight for ${currency}: ${targetWeight}. Cannot calculate burn fee.`,
     );
   }
-  
+
   const pctOfTarget = (actualWeight / targetWeight) * 100;
-  
+
   let feeBps: number;
   if (pctOfTarget < LOW_RESERVE_THRESHOLD_PCT - RESERVE_THRESHOLD_EPSILON) {
     // Low reserves: discourage burns with high fee
@@ -141,13 +135,13 @@ export async function getBurnFeeBps(currency: string): Promise<number> {
     // Normal reserves: standard fee
     feeBps = BASE_BURN_FEE_BPS;
   }
-  
+
   // Sanity check
   validateFeeSanity(
     feeBps,
-    `burn ${currency} (actual: ${actualWeight.toFixed(2)}%, target: ${targetWeight.toFixed(2)}%, ratio: ${pctOfTarget.toFixed(2)}%)`
+    `burn ${currency} (actual: ${actualWeight.toFixed(2)}%, target: ${targetWeight.toFixed(2)}%, ratio: ${pctOfTarget.toFixed(2)}%)`,
   );
-  
+
   return feeBps;
 }
 

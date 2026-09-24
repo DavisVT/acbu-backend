@@ -23,8 +23,7 @@ export async function decryptUserStellarSecret(
     select: { encryptedStellarSecret: true, keyEncryptionHint: true },
   });
   if (!user?.encryptedStellarSecret) return null;
-  if (user.keyEncryptionHint && user.keyEncryptionHint !== "passcode")
-    return null;
+  if (user.keyEncryptionHint && user.keyEncryptionHint !== "passcode") return null;
 
   const blob = Buffer.from(user.encryptedStellarSecret, "base64");
   if (blob.length < WALLET_ENC_IVLEN + WALLET_ENC_AUTH_TAG_LEN) {
@@ -33,19 +32,13 @@ export async function decryptUserStellarSecret(
 
   const iv = blob.subarray(0, WALLET_ENC_IVLEN);
   const authTag = blob.subarray(blob.length - WALLET_ENC_AUTH_TAG_LEN);
-  const ciphertext = blob.subarray(
-    WALLET_ENC_IVLEN,
-    blob.length - WALLET_ENC_AUTH_TAG_LEN,
-  );
+  const ciphertext = blob.subarray(WALLET_ENC_IVLEN, blob.length - WALLET_ENC_AUTH_TAG_LEN);
 
   const salt = WALLET_ENC_SALT_PREFIX + userId;
   const key = crypto.scryptSync(passcode, salt, WALLET_ENC_KEYLEN);
   const decipher = crypto.createDecipheriv(WALLET_ENC_ALGO, key, iv);
   decipher.setAuthTag(authTag);
 
-  const plaintext = Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]).toString("utf8");
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
   return plaintext;
 }

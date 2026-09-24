@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database";
 import { config } from "../config/env";
 import { logger } from "../config/logger";
@@ -96,10 +97,7 @@ function parseCsvBuffer(buffer: Buffer): { headers: string[]; rows: Record<strin
   const missing = required.filter((header) => !headers.includes(header));
 
   if (missing.length > 0) {
-    throw new AppError(
-      `CSV missing required headers: ${missing.join(", ")}`,
-      400,
-    );
+    throw new AppError(`CSV missing required headers: ${missing.join(", ")}`, 400);
   }
 
   const rows = lines.slice(1).map((line) => {
@@ -268,12 +266,7 @@ export async function processBulkTransfer(
         }
 
         results.push(
-          await processRow(
-            params.organizationId,
-            params.senderUserId,
-            validation.data,
-            start + i,
-          ),
+          await processRow(params.organizationId, params.senderUserId, validation.data, start + i),
         );
       }
       return results;
@@ -302,7 +295,7 @@ export async function processBulkTransfer(
       completedAt: new Date(),
       successCount,
       failureCount,
-      failureReport,
+      failureReport: failureReport as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -344,6 +337,6 @@ export async function getBulkTransferJob(jobId: string, organizationId: string) 
     status: job.status as BulkTransferJobStatus,
     createdAt: job.createdAt.toISOString(),
     completedAt: job.completedAt?.toISOString(),
-    failureReport: (job.failureReport as BulkTransferRowResult[]) ?? [],
+    failureReport: (job.failureReport as unknown as BulkTransferRowResult[]) ?? [],
   };
 }

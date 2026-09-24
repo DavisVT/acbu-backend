@@ -18,9 +18,7 @@ export async function getPublicAssetsConfig(
 ): Promise<void> {
   try {
     const issuer = process.env.STELLAR_ACBU_ASSET_ISSUER;
-    const code = (process.env.STELLAR_ACBU_ASSET_CODE || "ACBU")
-      .trim()
-      .toUpperCase();
+    const code = (process.env.STELLAR_ACBU_ASSET_CODE || "ACBU").trim().toUpperCase();
 
     res.status(200).json({
       acbu: {

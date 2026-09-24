@@ -2,11 +2,14 @@ import { AppError } from "../middleware/errorHandler";
 
 const IDEMPOTENCY_KEY_MAX_LENGTH = 255;
 
-export function extractIdempotencyKey(req: { get?(name: string): string | undefined; headers?: Record<string, string | string[] | undefined> }): string | undefined {
+export function extractIdempotencyKey(req: {
+  get?(name: string): string | undefined;
+  headers?: Record<string, string | string[] | undefined>;
+}): string | undefined {
   const rawKey =
     typeof req.get === "function"
       ? req.get("Idempotency-Key")
-      : req.headers?.["Idempotency-Key"] ?? req.headers?.["idempotency-key"];
+      : (req.headers?.["Idempotency-Key"] ?? req.headers?.["idempotency-key"]);
   if (rawKey === undefined) {
     return undefined;
   }
