@@ -94,7 +94,7 @@ model Transaction {
   acbuAmount       Decimal?         @map("acbu_amount") @db.Decimal(20, 8)
   acbuAmountBurned Decimal?         @map("acbu_amount_burned") @db.Decimal(20, 8)
   localCurrency    String?          @map("local_currency") @db.VarChar(3)
-  localAmount      Decimal?         @map("local_amount") @db.Decimal(20, 2)
+  localAmount      Decimal?         @map("local_amount") @db.Decimal(20, 8)
   recipientAccount Json?            @map("recipient_account")
   recipientAddress String?          @map("recipient_address") @db.VarChar(56)
   fee              Decimal?         @db.Decimal(20, 8)
