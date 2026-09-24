@@ -1,0 +1,49 @@
+name: Event Schema Contract Check
+
+on:
+  pull_request:
+    paths:
+      - "shared/events-schema.json"
+      - "src/jobs/acbu_*_event_listener.ts"
+      - "scripts/check-event-schema.js"
+      - "scripts/check-event-schema.test.js"
+      - "package.json"
+      - ".github/workflows/event-schema-check.yml"
+  push:
+    branches: [main, dev]
+    paths:
+      - "shared/events-schema.json"
+      - "src/jobs/acbu_*_event_listener.ts"
+      - "scripts/check-event-schema.js"
+      - "scripts/check-event-schema.test.js"
+      - "package.json"
+      - ".github/workflows/event-schema-check.yml"
+
+jobs:
+  event-schema:
+    name: Validate event schema contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check event schema
+        run: pnpm run event-schema:check
+
+      - name: Test event schema drift detection
+        run: pnpm run test:event-schema
