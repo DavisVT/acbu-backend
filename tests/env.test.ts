@@ -89,6 +89,28 @@ describe("env validation", () => {
     expect(config.adminRateLimitMaxRequests).toBe(30);
   });
 
+  it("defaults OPENAI_FAIL_OPEN_ENABLED to false (AB-025 fail-closed)", () => {
+    delete process.env.OPENAI_FAIL_OPEN_ENABLED;
+
+    const { config } = require("../src/config/env");
+
+    expect(config.openai.failOpenEnabled).toBe(false);
+  });
+
+  it("enables fail-open when OPENAI_FAIL_OPEN_ENABLED is explicitly true (AB-025)", () => {
+    process.env.OPENAI_FAIL_OPEN_ENABLED = "TRUE";
+
+    const { config } = require("../src/config/env");
+
+    expect(config.openai.failOpenEnabled).toBe(true);
+  });
+
+  it("throws when OPENAI_FAIL_OPEN_ENABLED has invalid boolean string", () => {
+    process.env.OPENAI_FAIL_OPEN_ENABLED = "not-a-bool";
+
+    expect(() => require("../src/config/env")).toThrow(/OPENAI_FAIL_OPEN_ENABLED/);
+  });
+
   it("throws when LOG_LEVEL is invalid", () => {
     process.env.LOG_LEVEL = "invalid_level";
     expect(() => require("../src/config/env")).toThrow(/LOG_LEVEL/);
@@ -171,9 +193,7 @@ describe("env validation", () => {
     };
     delete process.env.USDC_ISSUER_TESTNET;
 
-    expect(() => require("../src/config/env")).toThrow(
-      /USDC_ISSUER_TESTNET/,
-    );
+    expect(() => require("../src/config/env")).toThrow(/USDC_ISSUER_TESTNET/);
   });
 
   it("throws in production when USDC_ISSUER_MAINNET is missing", () => {
@@ -191,9 +211,7 @@ describe("env validation", () => {
     };
     delete process.env.USDC_ISSUER_MAINNET;
 
-    expect(() => require("../src/config/env")).toThrow(
-      /USDC_ISSUER_MAINNET/,
-    );
+    expect(() => require("../src/config/env")).toThrow(/USDC_ISSUER_MAINNET/);
   });
 
   it("loads in production when USDC issuers are configured", () => {
