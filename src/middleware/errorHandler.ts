@@ -98,7 +98,6 @@ export const errorHandler = (
         error_code: err.code,
         message: isServerError ? "Internal server error" : err.message,
         statusCode: err.statusCode,
-        ...(exposeDetails && err.details ? { details: err.details } : {}),
       },
     });
     return;
