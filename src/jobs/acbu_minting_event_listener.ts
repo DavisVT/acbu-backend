@@ -84,17 +84,14 @@ export async function startMintEventListener(): Promise<void> {
       return;
     }
 
-    const rawTxHash =
-      parseTxHashFromEffect(data) ??
-      (event.data as Record<string, unknown> | undefined)?.id;
-    const txHash: string =
-      typeof rawTxHash === "string"
-        ? rawTxHash
-        : `effect-${event.ledger}-${Date.now()}`;
-    let transactionId: string | null = null;
-    if (txHash.length === 64) {
-      transactionId = await findTransactionByBlockchainHash(txHash);
+    const txHash = parseTxHashFromEffect(data);
+    if (!txHash || !/^[a-f0-9]{64}$/i.test(txHash)) {
+      logger.debug("Mint event skipped: no blockchain tx hash", {
+        txHash,
+      });
+      return;
     }
+    const transactionId = await findTransactionByBlockchainHash(txHash);
 
     await enqueueUsdcConversion({
       usdcAmount: amountStr,

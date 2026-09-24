@@ -47,15 +47,9 @@ export async function startBurnEventListener(): Promise<void> {
 
   const handler = async (event: ContractEvent): Promise<void> => {
     const data = (event.data || {}) as Record<string, unknown>;
-    const rawTxHash =
-      parseTxHashFromEffect(data) ??
-      (event.data as Record<string, unknown> | undefined)?.id;
-    const txHash: string =
-      typeof rawTxHash === "string"
-        ? rawTxHash
-        : `effect-${event.ledger}-${Date.now()}`;
-    if (txHash.length !== 64) {
-      logger.debug("Burn event: no blockchain tx hash, skipping enqueue", {
+    const txHash = parseTxHashFromEffect(data);
+    if (!txHash || !/^[a-f0-9]{64}$/i.test(txHash)) {
+      logger.debug("Burn event: no valid blockchain tx hash, skipping enqueue", {
         txHash,
       });
       return;
