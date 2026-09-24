@@ -1,3 +1,4 @@
+import { Decimal } from "@prisma/client/runtime/library";
 import { depositFromBasketCurrency, mintFromUsdc } from "./mintController";
 import { prisma } from "../config/database";
 import { AppError } from "../middleware/errorHandler";
@@ -15,6 +16,8 @@ jest.mock("../config/database", () => ({
     transaction: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
     },
     onRampSwap: {
       create: jest.fn(),
@@ -43,9 +46,28 @@ jest.mock("../services/limits/limitsService", () => ({
   isMintingPaused: jest.fn(),
 }));
 
+jest.mock("../services/audit", () => ({
+  logAudit: jest.fn(),
+}));
+
+jest.mock("../config/logger", () => ({
+  logger: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  },
+}));
+
 jest.mock("../services/rates", () => ({
   convertLocalToUsd: jest.fn().mockResolvedValue(100),
   convertLocalToUsdWithPrecision: jest.fn(),
+}));
+
+jest.mock("../services/stellar/client", () => ({
+  stellarClient: {
+    getKeypair: jest.fn(() => ({ publicKey: jest.fn(() => "GBANKSOURCEACCOUNT1234567890") })),
+  },
 }));
 
 const makeRes = () => {
@@ -67,6 +89,9 @@ const mockedOnRampSwapCreate = prisma.onRampSwap.create as jest.Mock;
 const mockedOnRampSwapFindFirst = prisma.onRampSwap.findFirst as jest.Mock;
 const mockedTransactionCreate = prisma.transaction.create as jest.Mock;
 const mockedTransactionFindFirst = prisma.transaction.findFirst as jest.Mock;
+const mockedTransactionFindUnique = prisma.transaction.findUnique as jest.Mock;
+const mockedTransactionUpdate = prisma.transaction.update as jest.Mock;
+const mockedConvertLocalToUsdWithPrecision = jest.requireMock("../services/rates").convertLocalToUsdWithPrecision as jest.Mock;
 
 describe("mintController", () => {
   beforeEach(() => {
@@ -75,6 +100,11 @@ describe("mintController", () => {
     mockedCheckDepositLimits.mockResolvedValue(undefined);
     mockedIsMintingPaused.mockResolvedValue(false);
     mockedEnqueueUsdcConvertAndMint.mockResolvedValue(undefined);
+    mockedConvertLocalToUsdWithPrecision.mockResolvedValue({
+      usdAmount: 100,
+      originalAmount: new Decimal("100"),
+      acbuEquivalent: new Decimal("10"),
+    });
   });
 
   it("rejects /mint/deposit when API key has no user context", async () => {
@@ -145,6 +175,45 @@ describe("mintController", () => {
     expect(err).toBeInstanceOf(AppError);
     expect(err.statusCode).toBe(400);
     expect(err.message).toContain("currency must be one of");
+  });
+
+  it("mints ACBU from the basket deposit and records the on-chain hash", async () => {
+    mockedTransactionCreate.mockResolvedValue({ id: "tx-1" });
+    mockedTransactionUpdate.mockResolvedValue({ id: "tx-1" });
+    const mintFromBasket = jest.requireMock("../services/contracts").acbuMintingService.mintFromBasket;
+    mintFromBasket.mockResolvedValue({ transactionHash: "abc123", acbuAmount: "10" });
+
+    const res = makeRes();
+    const next = makeNext();
+    await depositFromBasketCurrency(
+      {
+        apiKey: { id: "key-1", userId: "user-1", organizationId: null, permissions: [], rateLimit: 100 },
+        body: {
+          currency: "NGN",
+          amount: "100",
+          wallet_address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        },
+      } as unknown as AuthRequest,
+      res,
+      next,
+    );
+
+    expect(mintFromBasket).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: "GBANKSOURCEACCOUNT1234567890",
+        recipient: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+      }),
+    );
+    expect(mockedTransactionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "tx-1" },
+        data: expect.objectContaining({
+          status: "completed",
+          blockchainTxHash: "abc123",
+        }),
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
   });
 
   it("returns the existing mint transaction on duplicate idempotency key", async () => {
