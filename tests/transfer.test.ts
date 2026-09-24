@@ -32,7 +32,10 @@ jest.mock("../src/services/stellar/feeManager", () => ({
 // any const declarations, so external variables would be undefined at factory time.
 jest.mock("@stellar/stellar-sdk", () => {
   const mockTx = { sign: jest.fn() };
-  const mockBuilder = { addOperation: jest.fn().mockReturnThis(), build: jest.fn().mockReturnValue(mockTx) };
+  const mockBuilder = {
+    addOperation: jest.fn().mockReturnThis(),
+    build: jest.fn().mockReturnValue(mockTx),
+  };
   return {
     ...jest.requireActual("@stellar/stellar-sdk"),
     Keypair: {
@@ -45,6 +48,11 @@ jest.mock("@stellar/stellar-sdk", () => {
   };
 });
 
+jest.mock("../src/services/wallet/walletStateService", () => ({
+  reserveWalletVersion: jest.fn().mockResolvedValue(1),
+  fetchWalletBalance: jest.fn(),
+}));
+
 jest.mock("../src/config/logger", () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
   logFinancialEvent: jest.fn(),
@@ -53,6 +61,8 @@ jest.mock("../src/config/logger", () => ({
 import { prisma } from "../src/config/database";
 import { createTransfer } from "../src/services/transfer/transferService";
 import { stellarClient } from "../src/services/stellar/client";
+import { fetchWalletBalance } from "../src/services/wallet/walletStateService";
+import { logFinancialEvent } from "../src/config/logger";
 
 const mockUser = prisma.user as jest.Mocked<typeof prisma.user>;
 const mockTx = prisma.transaction as jest.Mocked<typeof prisma.transaction>;
@@ -60,6 +70,7 @@ const mockTx = prisma.transaction as jest.Mocked<typeof prisma.transaction>;
 const SENDER_STELLAR = "G" + "A".repeat(55);
 const RECIPIENT_STELLAR = "G" + "B".repeat(55);
 const SENDER_ID = "user-sender-1";
+const TEST_ISSUER = "GD5FHO5TWVJ7K7J24Y4EATJTAQCWDCOYPBY4A7AUXZ46YUOVVF6UVE7E";
 
 const verifiedSender = { stellarAddress: SENDER_STELLAR, kycStatus: "verified" };
 const bobUser = {
@@ -80,11 +91,17 @@ describe("normalizeRecipientQuery", () => {
   });
 
   it("parses E.164 phone", () => {
-    expect(normalizeRecipientQuery("+2348012345678")).toEqual({ kind: "phone", value: "+2348012345678" });
+    expect(normalizeRecipientQuery("+2348012345678")).toEqual({
+      kind: "phone",
+      value: "+2348012345678",
+    });
   });
 
   it("parses email", () => {
-    expect(normalizeRecipientQuery("User@Example.com")).toEqual({ kind: "email", value: "user@example.com" });
+    expect(normalizeRecipientQuery("User@Example.com")).toEqual({
+      kind: "email",
+      value: "user@example.com",
+    });
   });
 
   it("parses valid Stellar address (base32 uppercase)", () => {
@@ -102,25 +119,81 @@ describe("normalizeRecipientQuery", () => {
 });
 
 describe("createTransfer", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.STELLAR_ACBU_ASSET_ISSUER = TEST_ISSUER;
+    (fetchWalletBalance as jest.Mock).mockResolvedValue({
+      snapshot: { balance: "10000000" },
+      walletVersion: 1,
+    });
+  });
+
+  // ── balance, asset config, amount scaling ───────────────────────────────────
+
+  it("rejects when sender balance is below amount, before creating a transaction", async () => {
+    (mockUser.findUnique as jest.Mock).mockResolvedValueOnce(verifiedSender);
+    (fetchWalletBalance as jest.Mock).mockResolvedValue({
+      snapshot: { balance: "4.9999999" },
+      walletVersion: 1,
+    });
+    await expect(
+      createTransfer({ senderUserId: SENDER_ID, to: RECIPIENT_STELLAR, amountAcbu: "5" }),
+    ).rejects.toThrow("Insufficient balance");
+    expect(mockTx.create).not.toHaveBeenCalled();
+  });
+
+  it("fails instead of sending native XLM when ACBU issuer is unset", async () => {
+    delete process.env.STELLAR_ACBU_ASSET_ISSUER;
+    (mockUser.findUnique as jest.Mock).mockResolvedValueOnce(verifiedSender);
+    (mockTx.create as jest.Mock).mockResolvedValue({ id: "tx-noissuer" });
+    (mockTx.update as jest.Mock).mockResolvedValue({});
+    const submitTransaction = jest.fn();
+    (stellarClient.getServer as jest.Mock).mockReturnValue({
+      loadAccount: jest.fn().mockResolvedValue({}),
+      submitTransaction,
+    });
+
+    const result = await createTransfer(
+      { senderUserId: SENDER_ID, to: RECIPIENT_STELLAR, amountAcbu: "1" },
+      { getSenderSigningKey: async () => "STEST_SECRET_KEY" },
+    );
+
+    expect(result.status).toBe("failed");
+    expect(submitTransaction).not.toHaveBeenCalled();
+  });
+
+  it("logs amount in 7-decimal smallest units", async () => {
+    (mockUser.findUnique as jest.Mock).mockResolvedValueOnce(verifiedSender);
+    (mockTx.create as jest.Mock).mockResolvedValue({ id: "tx-scale" });
+
+    await createTransfer({
+      senderUserId: SENDER_ID,
+      to: RECIPIENT_STELLAR,
+      amountAcbu: "1.2345678",
+    });
+
+    expect(logFinancialEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "transfer.initiated", amount: 12345678 }),
+    );
+  });
 
   // ── amount validation ────────────────────────────────────────────────────────
 
   it("rejects scientific notation amount", async () => {
     await expect(
-      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "1e5" })
+      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "1e5" }),
     ).rejects.toThrow("amount_acbu must be a positive number");
   });
 
   it("rejects zero amount", async () => {
     await expect(
-      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "0" })
+      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "0" }),
     ).rejects.toThrow("amount_acbu must be a positive number");
   });
 
   it("rejects amount with more than 7 decimal places", async () => {
     await expect(
-      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "1.12345678" })
+      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "1.12345678" }),
     ).rejects.toThrow("amount_acbu must be a positive number");
   });
 
@@ -128,7 +201,7 @@ describe("createTransfer", () => {
     // Will fail later on sender lookup — just confirms amount passes validation
     (mockUser.findUnique as jest.Mock).mockResolvedValue(null);
     await expect(
-      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "1.1234567" })
+      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "1.1234567" }),
     ).rejects.toThrow("Sender user not found");
   });
 
@@ -137,7 +210,7 @@ describe("createTransfer", () => {
   it("rejects when sender not found", async () => {
     (mockUser.findUnique as jest.Mock).mockResolvedValue(null);
     await expect(
-      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "10" })
+      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "10" }),
     ).rejects.toThrow("Sender user not found");
   });
 
@@ -147,7 +220,7 @@ describe("createTransfer", () => {
       kycStatus: "pending",
     });
     await expect(
-      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "10" })
+      createTransfer({ senderUserId: SENDER_ID, to: "@bob", amountAcbu: "10" }),
     ).rejects.toThrow("KYC required");
     // recipient lookup (findFirst) must NOT have been called
     expect(mockUser.findFirst).not.toHaveBeenCalled();
@@ -159,13 +232,13 @@ describe("createTransfer", () => {
     (mockUser.findUnique as jest.Mock).mockResolvedValue(verifiedSender);
     (mockUser.findFirst as jest.Mock).mockResolvedValue(null);
     await expect(
-      createTransfer({ senderUserId: SENDER_ID, to: "@ghost", amountAcbu: "10" })
+      createTransfer({ senderUserId: SENDER_ID, to: "@ghost", amountAcbu: "10" }),
     ).rejects.toThrow("Recipient not found or not available");
   });
 
   it("rejects self-transfer", async () => {
     (mockUser.findUnique as jest.Mock)
-      .mockResolvedValueOnce(verifiedSender)           // sender
+      .mockResolvedValueOnce(verifiedSender) // sender
       .mockResolvedValueOnce({ stellarAddress: SENDER_STELLAR }); // recipient stellar lookup
     (mockUser.findFirst as jest.Mock).mockResolvedValue({
       id: SENDER_ID,
@@ -175,7 +248,7 @@ describe("createTransfer", () => {
       privacyHideFromSearch: false,
     });
     await expect(
-      createTransfer({ senderUserId: SENDER_ID, to: "@alice", amountAcbu: "10" })
+      createTransfer({ senderUserId: SENDER_ID, to: "@alice", amountAcbu: "10" }),
     ).rejects.toThrow("Cannot transfer to yourself");
   });
 
@@ -214,7 +287,7 @@ describe("createTransfer", () => {
     expect(mockTx.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: "completed", blockchainTxHash: "abc123hash" }),
-      })
+      }),
     );
   });
 
@@ -244,7 +317,7 @@ describe("createTransfer", () => {
     expect(mockTx.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: "completed", blockchainTxHash: "stellar-tx-hash" }),
-      })
+      }),
     );
   });
 
@@ -270,7 +343,7 @@ describe("createTransfer", () => {
 
     expect(result.status).toBe("failed");
     expect(mockTx.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: "failed" }) })
+      expect.objectContaining({ data: expect.objectContaining({ status: "failed" }) }),
     );
   });
 
@@ -363,7 +436,7 @@ describe("createTransfer", () => {
     expect(mockTx.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ recipientAddress: RECIPIENT_STELLAR }),
-      })
+      }),
     );
   });
 });
