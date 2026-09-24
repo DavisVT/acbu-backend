@@ -219,4 +219,34 @@ describe("env validation", () => {
       "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
     );
   });
+
+  // AB-024: PII_ENCRYPTION_KEY enforcement
+  // Note: the production boot guard uses !isJestTest so it does not fire during
+  // Jest runs (by design — same pattern as all other production guards in env.ts).
+  // These tests therefore validate the Zod schema layer (format/length) and the
+  // config export value rather than the imperative guard itself.
+
+  it("rejects a PII_ENCRYPTION_KEY that is too short (AB-024)", () => {
+    process.env.PII_ENCRYPTION_KEY = "abc123"; // only 6 chars, must be 64
+    expect(() => require("../src/config/env")).toThrow(/PII_ENCRYPTION_KEY/);
+  });
+
+  it("rejects a PII_ENCRYPTION_KEY that contains non-hex characters (AB-024)", () => {
+    process.env.PII_ENCRYPTION_KEY = "z".repeat(64); // 'z' is not hex
+    expect(() => require("../src/config/env")).toThrow(/PII_ENCRYPTION_KEY/);
+  });
+
+  it("accepts a valid 64-char hex PII_ENCRYPTION_KEY and exposes it on config (AB-024)", () => {
+    const validKey = "a".repeat(64); // 64 × 'a' = valid lowercase hex
+    process.env.PII_ENCRYPTION_KEY = validKey;
+    const { config } = require("../src/config/env");
+    expect(config.piiEncryptionKey).toBe(validKey);
+  });
+
+  it("allows PII_ENCRYPTION_KEY to be absent in development (AB-024)", () => {
+    process.env = { ...ORIGINAL, ...REQUIRED_ENV, NODE_ENV: "development" };
+    delete process.env.PII_ENCRYPTION_KEY;
+    const { config } = require("../src/config/env");
+    expect(config.piiEncryptionKey).toBeUndefined();
+  });
 });
