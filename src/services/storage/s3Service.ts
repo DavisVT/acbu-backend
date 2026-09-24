@@ -214,13 +214,14 @@ export async function generateDownloadUrl(
   // IDOR guard — key must belong to this user
   assertKeyOwnership(objectKey, userId);
 
-  // Check scan status before issuing a download URL
+  // Check scan status before issuing a download URL.
+  // Fail closed: any status other than "clean" blocks access to avoid
+  // serving unscanned or unverified content.
   const scanStatus = await getObjectScanStatus(objectKey);
-  if (scanStatus === "infected") {
-    throw new Error("Document failed virus scan and cannot be downloaded. Contact support.");
-  }
-  if (scanStatus === "pending") {
-    throw new Error("Document is pending virus scan. Please try again in a few minutes.");
+  if (scanStatus !== "clean") {
+    throw new Error(
+      "Document is pending, failed, or unavailable for virus scan and cannot be downloaded.",
+    );
   }
 
   const expiresAt = Math.floor(Date.now() / 1000) + DOWNLOAD_URL_TTL_SECONDS;
@@ -253,10 +254,10 @@ export async function generateDownloadUrl(
 
 /**
  * Read the `scan-status` tag from an S3 object.
- * Returns "pending" | "clean" | "infected" | "unknown".
+ * Returns "pending" | "clean" | "infected".
  *
- * In production this tag is written by a Lambda/ClamAV scanner triggered on
- * s3:ObjectCreated events. The tag acts as the gate for download URL issuance.
+ * Any lookup failure or unexpected value is treated as "pending" so the system
+ * fails closed and does not allow download of objects whose safety is unknown.
  */
 export async function getObjectScanStatus(objectKey: string): Promise<string> {
   try {
@@ -279,7 +280,7 @@ export async function getObjectScanStatus(objectKey: string): Promise<string> {
     );
     const scanTag = tagging.TagSet?.find((t) => t.Key === "scan-status");
     const status = scanTag?.Value ?? "pending";
-    // Only "clean" is an accepted pass — treat anything else as pending/blocked
+    // Only "clean" is an accepted pass — treat anything else as pending/blocked.
     return ["clean", "infected", "pending"].includes(status) ? status : "pending";
   } catch (err: any) {
     if (err?.name === "NotFound" || err?.$metadata?.httpStatusCode === 404) {
@@ -289,7 +290,7 @@ export async function getObjectScanStatus(objectKey: string): Promise<string> {
       objectKey,
       error: err?.message,
     });
-    return "unknown";
+    return "pending";
   }
 }
 
