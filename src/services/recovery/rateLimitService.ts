@@ -33,6 +33,9 @@ const RATE_LIMITS = {
   },
 };
 
+export const RECOVERY_OTP_MAX_ATTEMPTS = RATE_LIMITS.identifier.maxAttempts;
+export const RECOVERY_OTP_ATTEMPT_PREFIX = "recovery-otp";
+
 /**
  * Check if recovery attempt is allowed based on rate limits
  */
@@ -40,8 +43,10 @@ export async function checkRecoveryRateLimit(
   identifier: string,
   userId?: string,
   ip?: string,
+  attemptReasonPrefix?: string,
 ): Promise<RecoveryRateLimitResult> {
   const now = new Date();
+  const attemptFilter = attemptReasonPrefix ? { reason: { startsWith: attemptReasonPrefix } } : {};
 
   // Check identifier-based rate limit
   const identifierAttempts = await prisma.recoveryAttempt.count({
@@ -50,6 +55,7 @@ export async function checkRecoveryRateLimit(
       createdAt: {
         gte: new Date(now.getTime() - RATE_LIMITS.identifier.windowMs),
       },
+      ...attemptFilter,
     },
   });
 
@@ -69,6 +75,7 @@ export async function checkRecoveryRateLimit(
       where: {
         ip,
         createdAt: { gte: new Date(now.getTime() - RATE_LIMITS.ip.windowMs) },
+        ...attemptFilter,
       },
     });
 
@@ -89,6 +96,7 @@ export async function checkRecoveryRateLimit(
       where: {
         userId,
         createdAt: { gte: new Date(now.getTime() - RATE_LIMITS.user.windowMs) },
+        ...attemptFilter,
       },
     });
 
