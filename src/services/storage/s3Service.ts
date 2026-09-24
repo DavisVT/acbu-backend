@@ -238,7 +238,9 @@ export async function generateDownloadUrl(
   // IDOR guard — key must belong to this user
   assertKeyOwnership(objectKey, userId);
 
-  // Check scan status before issuing a download URL
+  // Check scan status before issuing a download URL.
+  // Fail closed: any status other than "clean" blocks access to avoid
+  // serving unscanned or unverified content.
   const scanStatus = await getObjectScanStatus(objectKey);
   assertScanAllowsDownload(scanStatus);
 
@@ -274,8 +276,8 @@ export async function generateDownloadUrl(
  * Read the `scan-status` tag from an S3 object.
  * Returns "pending" | "clean" | "infected".
  *
- * In production this tag is written by a Lambda/ClamAV scanner triggered on
- * s3:ObjectCreated events. The tag acts as the gate for download URL issuance.
+ * Any lookup failure or unexpected value is treated as "pending" so the system
+ * fails closed and does not allow download of objects whose safety is unknown.
  */
 export async function getObjectScanStatus(objectKey: string): Promise<string> {
   try {
@@ -298,7 +300,7 @@ export async function getObjectScanStatus(objectKey: string): Promise<string> {
     );
     const scanTag = tagging.TagSet?.find((t) => t.Key === "scan-status");
     const status = scanTag?.Value ?? "pending";
-    // Only "clean" is an accepted pass — treat anything else as pending/blocked
+    // Only "clean" is an accepted pass — treat anything else as pending/blocked.
     return ["clean", "infected", "pending"].includes(status) ? status : "pending";
   } catch (err: any) {
     if (err?.name === "NotFound" || err?.$metadata?.httpStatusCode === 404) {
