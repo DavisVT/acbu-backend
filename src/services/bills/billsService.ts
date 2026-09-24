@@ -7,6 +7,7 @@ import { logger, logFinancialEvent } from "../../config/logger";
 import { logAudit } from "../audit";
 import { checkWithdrawalLimits, isCurrencyWithdrawalPaused } from "../limits/limitsService";
 import { enqueueWebhook } from "../webhook";
+import type { TransactionStatus } from "../../utils/transactionStateMachine";
 import { simulatedBillsPartner } from "./simulatedBillsPartner";
 import type {
   BillPaymentRequest,
@@ -48,7 +49,7 @@ function getWebhookEventType(provider: string, status: BillsWebhookStatus): stri
   return `bills:${provider}:${status}`;
 }
 
-function getTransactionStatusFromWebhook(status: BillsWebhookStatus): string {
+function getTransactionStatusFromWebhook(status: BillsWebhookStatus): TransactionStatus {
   if (status === "completed") return "completed";
   if (status === "failed") return "failed";
   return "refunded";

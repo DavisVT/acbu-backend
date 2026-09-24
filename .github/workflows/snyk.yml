@@ -59,4 +59,20 @@ jobs:
 
       - name: Skip summary
         if: steps.gate.outputs.should_run != 'true'
-        run: echo "Snyk scan skipped for this event."
+        # A bare echo left this job showing a plain green pass with no
+        # explanation, which could read as "Snyk ran and found nothing."
+        # Write to the job summary so a skipped run is clearly distinguishable
+        # from a clean scan, and points reviewers at what actually gates
+        # merges when Snyk itself did not run (see SECURITY.md).
+        run: |
+          {
+            echo "## Snyk scan skipped"
+            echo ""
+            echo "SNYK_TOKEN is not configured for this run (or this is a fork PR, which never gets repository secrets), so no Snyk scan ran."
+            echo ""
+            echo "Dependency vulnerabilities on this PR are still gated by:"
+            echo "- \`pnpm audit --audit-level high\` in the main CI workflow's Lint job (no token required)"
+            echo "- the Dependency Review check on every PR (no token required)"
+            echo ""
+            echo "See SECURITY.md for details."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -44,15 +44,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # Minimal env vars so Jest can load modules without connecting to real infra.
-      # All external calls are mocked in tests.
-      DATABASE_URL: postgresql://test:test@localhost:5432/test
-      MONGODB_URI: mongodb://localhost:27017/test
-      RABBITMQ_URL: amqp://localhost:5672
+      # Most tests mock external calls, but a few genuine integration tests
+      # (e.g. tests/recovery/recoverySecurity.test.ts,
+      # src/tests/controllers/monetaryControllerIntegration.test.ts) construct a
+      # real PrismaClient with no mocking at all, so they need an actual
+      # database to connect to. The services are started below via
+      # `docker compose up` against the repo's own docker-compose.yml — the
+      # same file used for local dev — so CI can never drift to different
+      # image versions than what's declared there (there is exactly one
+      # source of truth for these versions).
+      POSTGRES_USER: acbu_test
+      POSTGRES_PASSWORD: acbu_test_pw
+      POSTGRES_DB: acbu_test
+      MONGO_USER: acbu_test
+      MONGO_PASSWORD: acbu_test_pw
+      MONGO_DB: acbu_test
+      RABBITMQ_USER: acbu_test
+      RABBITMQ_PASSWORD: acbu_test_pw
+      DATABASE_URL: postgresql://acbu_test:acbu_test_pw@localhost:5432/acbu_test
+      MONGODB_URI: mongodb://acbu_test:acbu_test_pw@localhost:27017/acbu_test?authSource=admin
+      RABBITMQ_URL: amqp://acbu_test:acbu_test_pw@localhost:5672
       JWT_SECRET: ci-test-secret-not-used-in-real-traffic
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v7
+
+      - name: Start local dev infrastructure
+        run: docker compose up -d --wait
 
       - uses: pnpm/action-setup@v6
         with:
@@ -69,6 +87,9 @@ jobs:
       - name: Verify bcrypt native build
         run: node -e "require('bcrypt')"
 
+      - name: Apply database migrations
+        run: pnpm prisma:migrate:deploy
+
       - name: Run tests
         run: pnpm exec jest --ci --coverage
 
@@ -79,6 +100,14 @@ jobs:
           name: coverage
           path: coverage/
           retention-days: 7
+
+      - name: Post coverage summary
+        # coverage/coverage-summary.json comes from jest.config.js's
+        # "json-summary" reporter. This makes coverage visible directly in
+        # the run's job summary — a reviewer sees the numbers without
+        # downloading the artifact, giving them an actual regression signal.
+        if: always()
+        run: node scripts/ci/post-coverage-summary.js
 
   build:
     name: Build
@@ -128,7 +157,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "pnpm"
 
       - name: Install dependencies

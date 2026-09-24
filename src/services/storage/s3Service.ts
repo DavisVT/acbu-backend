@@ -202,10 +202,34 @@ export interface PresignedDownloadResult {
 }
 
 /**
+ * Download gate for KYC documents.
+ *
+ * `clean` is the only value that passes. This is an allow-list on purpose: a
+ * block-list of known-bad values lets any other value through, including one
+ * produced by a failure to read the tag at all.
+ */
+export function assertScanAllowsDownload(scanStatus: string): void {
+  if (scanStatus === "clean") return;
+
+  if (scanStatus === "infected") {
+    throw new Error("Document failed virus scan and cannot be downloaded. Contact support.");
+  }
+
+  if (scanStatus === "pending") {
+    throw new Error("Document is pending virus scan. Please try again in a few minutes.");
+  }
+
+  // Unexpected or unreadable status: the scan result cannot be established, so
+  // the document stays unavailable rather than being served unscanned.
+  logger.warn("Blocking download: unrecognised virus scan status", { scanStatus });
+  throw new Error("Document virus scan status could not be confirmed. Please try again later.");
+}
+
+/**
  * Generate a short-lived presigned GET URL for a KYC document.
  *
  * Enforces ownership: the requesting userId must match the key prefix.
- * Blocks download if the virus scan has not passed.
+ * Blocks download unless the virus scan explicitly passed.
  */
 export async function generateDownloadUrl(
   userId: string,
@@ -216,12 +240,7 @@ export async function generateDownloadUrl(
 
   // Check scan status before issuing a download URL
   const scanStatus = await getObjectScanStatus(objectKey);
-  if (scanStatus === "infected") {
-    throw new Error("Document failed virus scan and cannot be downloaded. Contact support.");
-  }
-  if (scanStatus === "pending") {
-    throw new Error("Document is pending virus scan. Please try again in a few minutes.");
-  }
+  assertScanAllowsDownload(scanStatus);
 
   const expiresAt = Math.floor(Date.now() / 1000) + DOWNLOAD_URL_TTL_SECONDS;
   const bucket = requireConfiguredS3Bucket(config.s3.bucket);
@@ -253,7 +272,7 @@ export async function generateDownloadUrl(
 
 /**
  * Read the `scan-status` tag from an S3 object.
- * Returns "pending" | "clean" | "infected" | "unknown".
+ * Returns "pending" | "clean" | "infected".
  *
  * In production this tag is written by a Lambda/ClamAV scanner triggered on
  * s3:ObjectCreated events. The tag acts as the gate for download URL issuance.
@@ -289,7 +308,9 @@ export async function getObjectScanStatus(objectKey: string): Promise<string> {
       objectKey,
       error: err?.message,
     });
-    return "unknown";
+    // A failed lookup is not a passed scan. Returning a distinct "unknown"
+    // value only invited callers to treat it as safe; fall back to "pending".
+    return "pending";
   }
 }
 

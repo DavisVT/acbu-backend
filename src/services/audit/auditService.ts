@@ -155,10 +155,8 @@ function alertAdmin(payload: AuditPayload, failureReason: string): void {
 /**
  * logAudit: Publishes audit entry to RabbitMQ with retry.
  * On sustained failure saves to MongoDB outbox so events are never lost.
- *
- * Never throws (AB-018): incomplete admin attribution is reported via
- * logger.error and the entry is still recorded — audit logging must not
- * abort the caller's operation or lose the attempted action.
+ * Rejects after the recovery path so callers can observe that the primary
+ * audit transport was unavailable.
  */
 export async function logAudit(entry: AuditEntry): Promise<void> {
   try {
@@ -196,5 +194,7 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
       action: entry?.action,
       error: err instanceof Error ? err.message : String(err),
     });
+    await saveToOutbox(payload, reason);
+    throw err;
   }
 }

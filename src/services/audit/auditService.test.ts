@@ -114,7 +114,7 @@ describe("AuditService Reliability (RabbitMQ)", () => {
     const mkdirSyncSpy = jest.spyOn(fs, "mkdirSync").mockImplementation(() => "");
     const existsSyncSpy = jest.spyOn(fs, "existsSync").mockReturnValue(true);
 
-    await logAudit(entry);
+    await expect(logAudit(entry)).rejects.toThrow("RabbitMQ sendToQueue returned false");
 
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining("Audit publish failed after 3 retries"),
@@ -141,7 +141,7 @@ describe("AuditService Reliability (RabbitMQ)", () => {
     const originalAlertEmail = config.notification.alertEmail;
     config.notification.alertEmail = "admin@example.com";
 
-    await logAudit(entry);
+    await expect(logAudit(entry)).rejects.toThrow("RabbitMQ Down");
 
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining("Audit publish failed after 3 retries"),
