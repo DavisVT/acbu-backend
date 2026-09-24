@@ -23,7 +23,7 @@ import { enqueueUsdcConvertAndMint } from "../jobs/usdcConvertAndMintJob";
 import { AppError } from "../middleware/errorHandler";
 import { ErrorCodes } from "../types/errorCodes";
 import { convertLocalToUsd } from "../services/rates";
-import { extractIdempotencyKey } from "../utils/idempotency";
+import { extractIdempotencyKey, scopeIdempotencyKey } from "../utils/idempotency";
 import { assertUserWalletAddress } from "../services/wallet/walletService";
 import { logger } from "../config/logger";
 import {
@@ -356,7 +356,17 @@ export async function depositFromBasketCurrency(
       req.apiKey?.organizationId ?? null,
     );
 
-    const idempotencyKey = extractIdempotencyKey(req) ?? fintech_tx_id ?? undefined;
+    // Idempotency keys are scoped to the requesting user (Pi-Defi-world/
+    // acbu-backend#985): Transaction.idempotencyKey is globally unique, so an
+    // unscoped partner fintech_tx_id would let two users collide on the same
+    // key — the second user would receive a 202 referencing the first user's
+    // transaction (status/existence disclosure) and their own deposit would
+    // be blocked.
+    const rawIdempotencyKey =
+      extractIdempotencyKey(req) ?? fintech_tx_id ?? undefined;
+    const idempotencyKey = rawIdempotencyKey
+      ? scopeIdempotencyKey(userId, rawIdempotencyKey)
+      : undefined;
     if (idempotencyKey) {
       const existingTx = await prisma.transaction.findUnique({
         where: { idempotencyKey },

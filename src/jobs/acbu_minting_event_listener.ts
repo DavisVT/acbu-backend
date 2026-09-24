@@ -1,5 +1,11 @@
 /**
  * Listens for MintEvent (contract_credited) on acbu_minting contract and enqueues USDC_CONVERSION jobs.
+ *
+ * Correlation guarantee (Pi-Defi-world/acbu-backend#982): a mint effect is
+ * only forwarded to the conversion queue when its on-chain transaction hash
+ * can be verified and correlated to a known mint Transaction. Reserve
+ * history rows created downstream always link back to that transaction —
+ * orphan entries for uncorrelatable effects are never created.
  */
 import { eventListener, ContractEvent } from "../services/stellar/eventListener";
 import { getContractAddresses } from "../config/contracts";
@@ -66,39 +72,45 @@ export async function startMintEventListener(): Promise<void> {
       return;
     }
 
-    const rawTxHash =
-      parseTxHashFromEffect(data) ?? (event.data as Record<string, unknown> | undefined)?.id;
-    const txHash: string =
-      typeof rawTxHash === "string" ? rawTxHash : `effect-${event.ledger}-${Date.now()}`;
-    let transactionId: string | null = null;
-    if (txHash.length === 64) {
-      transactionId = await findTransactionByBlockchainHash(txHash);
-    }
-    if (!verified) {
-      logger.warn("Mint event: rejecting event with unverified tx hash", {
-        txHash: resolvedHash,
+    // Resolve the on-chain tx hash from the effect payload (direct hash or
+    // operation lookup). Unresolvable effects are never acted upon.
+    const { txHash, verified } = await resolveTxHash(data);
+    if (!verified || !txHash) {
+      logger.warn("Mint event: rejecting event with unresolvable tx hash", {
+        type: event.type,
         ledger: event.ledger,
       });
       return;
     }
 
-    const onChainValid = await verifyTxHashOnChain(resolvedHash);
+    // The hash must exist on the Stellar network before it is trusted.
+    const onChainValid = await verifyTxHashOnChain(txHash);
     if (!onChainValid) {
       logger.warn("Mint event: rejecting event — tx hash not found on-chain", {
-        txHash: resolvedHash,
+        txHash,
         ledger: event.ledger,
       });
       return;
     }
 
-    let transactionId: string | null = null;
-    transactionId = await findTransactionByBlockchainHash(resolvedHash);
+    // Correlate to a known pending mint transaction. Effects that cannot be
+    // correlated must NOT drive reserve accounting (Pi-Defi-world/
+    // acbu-backend#982): the conversion job would otherwise create orphan
+    // reserve-history entries for a deposit we cannot tie to a transaction.
+    const transactionId = await findTransactionByBlockchainHash(txHash);
+    if (!transactionId) {
+      logger.warn(
+        "Mint event: no matching transaction for verified tx hash — event ignored, no reserve history written",
+        { txHash, ledger: event.ledger },
+      );
+      return;
+    }
 
     await enqueueUsdcConversion({
       usdcAmount: amountStr,
       recipient,
-      txHash: resolvedHash,
-      transactionId: transactionId ?? undefined,
+      txHash,
+      transactionId,
     });
   };
 
