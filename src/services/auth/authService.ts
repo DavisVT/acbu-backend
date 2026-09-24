@@ -897,9 +897,7 @@ export async function issueRefreshToken(
   const token = generateSecureRefreshToken();
   const tokenHash = await hashRefreshToken(token);
   const tokenFamilyId = generateId();
-  const expiresAt = new Date(
-    Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-  );
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
   await prisma.refreshToken.create({
     data: {
@@ -985,9 +983,7 @@ export async function refreshAccessToken(
   const newToken = generateSecureRefreshToken();
   const newTokenHash = await hashRefreshToken(newToken);
   const newTokenFamilyId = generateId();
-  const newExpiresAt = new Date(
-    Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-  );
+  const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
   await prisma.refreshToken.create({
     data: {

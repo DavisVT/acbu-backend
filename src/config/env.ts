@@ -37,6 +37,7 @@ const envSchema = z.object({
   JWT_CLOCK_TOLERANCE_SECONDS: z.coerce.number().int().nonnegative().default(30),
   API_KEY_SALT: z.string().default(""),
   ADMIN_API_KEY: z.string().optional(),
+  ADMIN_API_KEYS: z.string().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(100),
   AUTH_RATE_LIMIT_WINDOW_MS: z.coerce
@@ -80,8 +81,13 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().optional(),
   CDN_URL: z.string().url().optional(),
 
-  // B-063: Fail-open controls for OpenAI degradation scenarios.
-  OPENAI_FAIL_OPEN_ENABLED: z.string().default("true"),
+  // B-063 / AB-025: Fail-open controls for OpenAI degradation scenarios.
+  // Defaults to "false" (fail-closed) so KYC/moderation checks reject unverified requests during degradation.
+  OPENAI_FAIL_OPEN_ENABLED: z
+    .string()
+    .toLowerCase()
+    .pipe(z.enum(["true", "false"]))
+    .default("false"),
   OPENAI_FAIL_OPEN_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
   OPENAI_FAIL_OPEN_MAX_RETRIES: z.coerce.number().int().nonnegative().default(2),
   OPENAI_FAIL_OPEN_RETRY_BASE_MS: z.coerce.number().int().positive().default(500),
@@ -136,16 +142,13 @@ if (!parsed.success) {
 }
 
 const isJestTest =
-  typeof (globalThis as any).jest !== "undefined" ||
-  process.env.JEST_WORKER_ID !== undefined;
+  typeof (globalThis as any).jest !== "undefined" || process.env.JEST_WORKER_ID !== undefined;
 
 if (
   parsed.data.WEBHOOK_SIGNATURE_BYPASS !== undefined &&
   !["development", "test"].includes(parsed.data.NODE_ENV)
 ) {
-  throw new Error(
-    "WEBHOOK_SIGNATURE_BYPASS must be unset in staging and production environments",
-  );
+  throw new Error("WEBHOOK_SIGNATURE_BYPASS must be unset in staging and production environments");
 }
 
 if (parsed.data.NODE_ENV === "production" && !isJestTest && !parsed.data.PRISMA_ACCELERATE_URL) {
@@ -192,7 +195,11 @@ if (parsed.data.NODE_ENV === "production" && !isJestTest && !parsed.data.USDC_IS
 
 const s3ScanWebhookSecret = process.env.S3_SCAN_WEBHOOK_SECRET?.trim() || "change-me-in-production";
 
-if (parsed.data.NODE_ENV === "production" && !isJestTest && s3ScanWebhookSecret === "change-me-in-production") {
+if (
+  parsed.data.NODE_ENV === "production" &&
+  !isJestTest &&
+  s3ScanWebhookSecret === "change-me-in-production"
+) {
   throw new Error("Missing required environment variable: S3_SCAN_WEBHOOK_SECRET");
 }
 // #382: Fintech partner keys must never be absent in production — an empty
@@ -254,6 +261,29 @@ export const config = {
   jwtClockToleranceSeconds: env.JWT_CLOCK_TOLERANCE_SECONDS,
   apiKeySalt: env.API_KEY_SALT,
   adminApiKey: env.ADMIN_API_KEY,
+  adminApiKeys: ((): Array<{ id: string; key: string }> => {
+    const keys: Array<{ id: string; key: string }> = [];
+    if (env.ADMIN_API_KEYS) {
+      env.ADMIN_API_KEYS.split(",")
+        .map((k) => k.trim())
+        .filter(Boolean)
+        .forEach((entry, idx) => {
+          if (entry.includes(":")) {
+            const [id, key] = entry.split(":", 2);
+            if (key && key.trim()) keys.push({ id: id.trim(), key: key.trim() });
+          } else {
+            keys.push({ id: `admin_${idx + 1}`, key: entry });
+          }
+        });
+    }
+    if (env.ADMIN_API_KEY && env.ADMIN_API_KEY.trim()) {
+      const singleKey = env.ADMIN_API_KEY.trim();
+      if (!keys.some((k) => k.key === singleKey)) {
+        keys.push({ id: "default_admin", key: singleKey });
+      }
+    }
+    return keys;
+  })(),
   rateLimitWindowMs: env.RATE_LIMIT_WINDOW_MS,
   rateLimitMaxRequests: env.RATE_LIMIT_MAX_REQUESTS,
   authRateLimitWindowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
@@ -581,8 +611,8 @@ export const config = {
     apiKey: env.OPENAI_API_KEY || "",
     orgMonthlyBudgetUsd: env.OPENAI_ORG_MONTHLY_BUDGET_USD,
     maxTokensPerRequest: env.OPENAI_MAX_TOKENS_PER_REQUEST,
-    // Fail-open behaviour: if true, downstream callers will be allowed to continue
-    // when the OpenAI service is degraded (timeouts, rate limits, network issues).
+    // AB-025: Fail-open behaviour (defaults to false / fail-closed for security & KYC compliance).
+    // When false, downstream callers fail closed when OpenAI service is degraded.
     failOpenEnabled: env.OPENAI_FAIL_OPEN_ENABLED === "true",
     failOpenTimeoutMs: env.OPENAI_FAIL_OPEN_TIMEOUT_MS,
     failOpenMaxRetries: env.OPENAI_FAIL_OPEN_MAX_RETRIES,

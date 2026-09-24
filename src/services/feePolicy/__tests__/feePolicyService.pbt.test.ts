@@ -3,7 +3,7 @@
  *
  * These tests use fast-check to generate hundreds of random inputs
  * and verify mathematical properties that must always hold true.
- * 
+ *
  * To run: pnpm add -D fast-check
  * Then: pnpm test -- feePolicyService.pbt.test.ts
  */
