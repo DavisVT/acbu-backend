@@ -12,10 +12,7 @@ import { getContractAddresses } from "../config/contracts";
 import { enqueueUsdcConversion } from "./usdcConversionJob";
 import { logger } from "../config/logger";
 import { prisma } from "../config/database";
-import {
-  resolveTxHash,
-  verifyTxHashOnChain,
-} from "../services/stellar/txHashValidation";
+import { resolveTxHash, verifyTxHashOnChain } from "../services/stellar/txHashValidation";
 
 const MINT_EFFECT_TYPES = ["contract_credited", "contract_effect"]; // Horizon effect types for mint/credit
 
@@ -72,18 +69,18 @@ export async function startMintEventListener(): Promise<void> {
       return;
     }
 
-    // Resolve the on-chain tx hash from the effect payload (direct hash or
-    // operation lookup). Unresolvable effects are never acted upon.
+    // Resolve the real transaction hash and confirm it exists on-chain before
+    // acting on the event. Effects are public input: without this check an
+    // injected payload can drive the conversion and reserve accounting.
     const { txHash, verified } = await resolveTxHash(data);
-    if (!verified || !txHash) {
-      logger.warn("Mint event: rejecting event with unresolvable tx hash", {
-        type: event.type,
+    if (!verified || txHash === null) {
+      logger.warn("Mint event: rejecting event without a valid transaction hash", {
         ledger: event.ledger,
+        type: event.type,
       });
       return;
     }
 
-    // The hash must exist on the Stellar network before it is trusted.
     const onChainValid = await verifyTxHashOnChain(txHash);
     if (!onChainValid) {
       logger.warn("Mint event: rejecting event — tx hash not found on-chain", {
@@ -93,16 +90,15 @@ export async function startMintEventListener(): Promise<void> {
       return;
     }
 
-    // Correlate to a known pending mint transaction. Effects that cannot be
-    // correlated must NOT drive reserve accounting (Pi-Defi-world/
-    // acbu-backend#982): the conversion job would otherwise create orphan
-    // reserve-history entries for a deposit we cannot tie to a transaction.
+    // No matching transaction means the conversion job has nothing to reconcile
+    // against: it records reserve history unconditionally, so enqueueing would
+    // leave orphan reserve entries behind.
     const transactionId = await findTransactionByBlockchainHash(txHash);
     if (!transactionId) {
-      logger.warn(
-        "Mint event: no matching transaction for verified tx hash — event ignored, no reserve history written",
-        { txHash, ledger: event.ledger },
-      );
+      logger.warn("Mint event: no pending/processing mint transaction for hash", {
+        txHash,
+        ledger: event.ledger,
+      });
       return;
     }
 

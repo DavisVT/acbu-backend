@@ -67,79 +67,7 @@ export async function startUsdcConversionConsumer(): Promise<void> {
       let claimedTransactionId: string | null = null;
       try {
         const body = JSON.parse(msg.content.toString()) as UsdcConversionPayload;
-        const { usdcAmount, recipient, txHash, transactionId } = body;
-        const usdcNum = Number(usdcAmount);
-        if (!(usdcNum > 0)) {
-          ch.ack(msg);
-          return;
-        }
-
-        // Idempotency gate (Pi-Defi-world/acbu-backend#981): without a
-        // matched transaction there is no claim to make and no deposit to
-        // correlate the conversion to — writing reserve history here would
-        // create orphan entries that inflate reserves. Skip the message.
-        if (!transactionId) {
-          logger.warn(
-            "USDC conversion skipped: no matching transaction for txHash — reserve history not written",
-            { usdcAmount, recipient, txHash },
-          );
-          ch.ack(msg);
-          return;
-        }
-
-        // Atomic claim: pending → processing. A redelivered or concurrent
-        // duplicate of the same source txHash loses the claim and is dropped.
-        const claimed = await claimTransaction(transactionId);
-        if (!claimed) {
-          logger.info("USDC conversion skipped: transaction already claimed or completed", {
-            txHash,
-            transactionId,
-          });
-          ch.ack(msg);
-          return;
-        }
-        claimedTransactionId = transactionId;
-
-        const basket = await basketService.getCurrentBasket();
-        for (const { currency, weight } of basket) {
-          const weightFrac = weight / 100;
-          const amountLocal = usdcNum * weightFrac;
-          try {
-            const router = getFintechRouter();
-            const provider = await router.getProvider(currency);
-            await provider.convertCurrency(usdcNum * weightFrac, "USD", currency);
-          } catch (e) {
-            logger.warn("USDC conversion: FX skip", { currency, error: e });
-          }
-          // Reserve history is linked to the claimed transaction so reserve
-          // accounting stays reconcilable (Pi-Defi-world/acbu-backend#981).
-          await prisma.reserveHistory.create({
-            data: {
-              currency,
-              amountChange: new Decimal(amountLocal),
-              reason: "conversion",
-              newAmount: null,
-              transactionId,
-            },
-          });
-        }
-
-        await prisma.transaction.update({
-          where: { id: transactionId },
-          data: {
-            status: "completed",
-            blockchainTxHash: txHash,
-            completedAt: new Date(),
-          },
-        });
-        claimedTransactionId = null;
-
-        logger.info("USDC conversion processed", {
-          usdcAmount,
-          recipient,
-          txHash,
-          transactionId,
-        });
+        await processUsdcConversion(body);
         ch.ack(msg);
       } catch (e) {
         // Release the claim so a redelivered copy of this message can be
@@ -169,6 +97,68 @@ export async function startUsdcConversionConsumer(): Promise<void> {
     { noAck: false },
   );
   logger.info("USDC conversion consumer started", { queue: QUEUE });
+}
+
+/**
+ * Convert the credited USDC into basket-currency reserves and record the moves.
+ *
+ * Exported separately from the consumer so it can be driven directly by tests,
+ * the same way `processUsdcConvertAndMint` is.
+ */
+export async function processUsdcConversion(payload: UsdcConversionPayload): Promise<void> {
+  const { usdcAmount, recipient, txHash, transactionId } = payload;
+  const usdcNum = Number(usdcAmount);
+  if (!(usdcNum > 0)) {
+    logger.warn("USDC conversion skipped: amount is not positive", { usdcAmount, txHash });
+    return;
+  }
+
+  const basket = await basketService.getCurrentBasket();
+  for (const { currency, weight } of basket) {
+    const weightFrac = weight / 100;
+    const amountLocal = usdcNum * weightFrac;
+    try {
+      const router = getFintechRouter();
+      const provider = await router.getProvider(currency);
+      await provider.convertCurrency(usdcNum * weightFrac, "USD", currency);
+    } catch (e) {
+      // The purchase did not happen, so the reserve ledger must not move for
+      // this currency. Recording it anyway credits reserves that were never
+      // acquired and desyncs the ledger from the actual holdings.
+      logger.warn("USDC conversion: FX failed, no reserve entry recorded", {
+        currency,
+        amountLocal,
+        error: e,
+      });
+      continue;
+    }
+
+    await prisma.reserveHistory.create({
+      data: {
+        currency,
+        amountChange: new Decimal(amountLocal),
+        reason: "conversion",
+        newAmount: null,
+      },
+    });
+  }
+
+  if (transactionId) {
+    await prisma.transaction.update({
+      where: { id: transactionId },
+      data: {
+        status: "completed",
+        blockchainTxHash: txHash,
+        completedAt: new Date(),
+      },
+    });
+  }
+
+  logger.info("USDC conversion processed", {
+    usdcAmount,
+    recipient,
+    txHash,
+  });
 }
 
 /**

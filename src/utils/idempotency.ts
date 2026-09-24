@@ -1,43 +1,35 @@
-import type { Request } from "express";
+import { AppError } from "../middleware/errorHandler";
 
-/**
- * Maximum length of the persisted idempotency key.
- * Mirrors the `transactions.idempotency_key` VarChar(255) column.
- */
-export const IDEMPOTENCY_KEY_MAX_LENGTH = 255;
+const IDEMPOTENCY_KEY_MAX_LENGTH = 255;
 
-/**
- * Extracts the idempotency key from the request.
- * Checks the Idempotency-Key header first, then the body.
- */
-export function extractIdempotencyKey(req: Request): string | undefined {
-  const headerKey = req.header("Idempotency-Key");
-  if (headerKey) return headerKey;
+export function extractIdempotencyKey(req: {
+  get?(name: string): string | undefined;
+  headers?: Record<string, string | string[] | undefined>;
+}): string | undefined {
+  const rawKey =
+    typeof req.get === "function"
+      ? req.get("Idempotency-Key")
+      : (req.headers?.["Idempotency-Key"] ?? req.headers?.["idempotency-key"]);
+  if (rawKey === undefined) {
+    return undefined;
+  }
 
-  const bodyKey = (req.body as { idempotencyKey?: unknown } | undefined)
-    ?.idempotencyKey;
-  return typeof bodyKey === "string" ? bodyKey : undefined;
-}
+  const normalizedKey = (Array.isArray(rawKey) ? rawKey[0] : rawKey).trim();
+  if (normalizedKey.length === 0) {
+    throw new AppError(
+      "Idempotency-Key header must be a non-empty string",
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
 
-/**
- * Namespaces a raw idempotency key by its owning principal (user id).
- *
- * `Transaction.idempotencyKey` is globally unique, so an unscoped
- * partner-supplied key (e.g. `fintech_tx_id`) lets one user collide into
- * another user's transaction — the second submitter would receive a 202
- * referencing somebody else's transaction, and the legitimate deposit is
- * blocked (Pi-Defi-world/acbu-backend#985). Scoping the key by the
- * authenticated user removes the cross-user collision.
- *
- * The scope prefix counts against the 255-character column limit, so the
- * raw key is truncated to keep the stored value within bounds.
- */
-export function scopeIdempotencyKey(scope: string, rawKey: string): string {
-  const maxRawLength = Math.max(
-    1,
-    IDEMPOTENCY_KEY_MAX_LENGTH - scope.length - 1,
-  );
-  const safeKey =
-    rawKey.length > maxRawLength ? rawKey.slice(0, maxRawLength) : rawKey;
-  return `${scope}:${safeKey}`;
+  if (normalizedKey.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+    throw new AppError(
+      `Idempotency-Key header exceeds maximum length of ${IDEMPOTENCY_KEY_MAX_LENGTH}`,
+      400,
+      "VALIDATION_ERROR",
+    );
+  }
+
+  return normalizedKey;
 }

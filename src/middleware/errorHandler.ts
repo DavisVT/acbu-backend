@@ -95,7 +95,6 @@ export const errorHandler = (
         error_code: err.code,
         message: err.message,
         statusCode: err.statusCode,
-        ...(err.details ? { details: err.details } : {}),
       },
     });
     return;

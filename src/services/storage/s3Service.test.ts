@@ -10,6 +10,7 @@
 import {
   buildObjectKey,
   assertKeyOwnership,
+  assertScanAllowsDownload,
   ALLOWED_MIME_TYPES,
   ALL_ALLOWED_MIME_TYPES,
   requireConfiguredS3Bucket,
@@ -98,6 +99,28 @@ describe("ALLOWED_MIME_TYPES", () => {
   it("ALL_ALLOWED_MIME_TYPES contains no duplicates", () => {
     const unique = new Set(ALL_ALLOWED_MIME_TYPES);
     expect(unique.size).toBe(ALL_ALLOWED_MIME_TYPES.length);
+  });
+});
+
+// ── assertScanAllowsDownload ─────────────────────────────────────────────────
+
+describe("assertScanAllowsDownload", () => {
+  it("allows a document the scanner marked clean", () => {
+    expect(() => assertScanAllowsDownload("clean")).not.toThrow();
+  });
+
+  it("blocks a document the scanner marked infected", () => {
+    expect(() => assertScanAllowsDownload("infected")).toThrow(/failed virus scan/);
+  });
+
+  it("blocks a document whose scan has not finished", () => {
+    expect(() => assertScanAllowsDownload("pending")).toThrow(/pending virus scan/);
+  });
+
+  it("blocks an unrecognised status rather than serving the object", () => {
+    for (const status of ["unknown", "", "CLEAN", "quarantined"]) {
+      expect(() => assertScanAllowsDownload(status)).toThrow();
+    }
   });
 });
 
