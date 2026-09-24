@@ -17,7 +17,7 @@ import {
   renderInvestmentWithdrawalReadyTemplate,
 } from "../services/notification";
 import {
-  parseIncomingMessage,
+  parseQueueMessage,
   deadLetterMessage,
   MessageValidationError,
 } from "../utils/rabbitmq-validation";
@@ -25,7 +25,7 @@ import type { OtpSend, Notification } from "../types/rabbitmq-schemas";
 
 type UserNotificationContact = Pick<User, "email" | "phoneE164">;
 
-async function processOtpSend(payload: OtpSend): Promise<void> {
+export async function processOtpSend(payload: OtpSend): Promise<void> {
   const { channel, to, code } = payload;
   const body = renderOtpTemplate(code);
   if (channel === "email") {
@@ -37,7 +37,7 @@ async function processOtpSend(payload: OtpSend): Promise<void> {
   }
 }
 
-async function processNotification(payload: Notification): Promise<void> {
+export async function processNotification(payload: Notification): Promise<void> {
   const { type } = payload;
   if (type === "reserve_alert") {
     const { health, overcollateralizationRatio } = payload;
@@ -116,8 +116,9 @@ export async function startNotificationConsumer(): Promise<void> {
       const retries = typeof headers["x-retries"] === "number" ? headers["x-retries"] : 0;
 
       try {
-        // Validate OTP send message
-        const validatedPayload = parseIncomingMessage<OtpSend>(QUEUES.OTP_SEND, msg.content);
+        // Validate OTP send message. The queue determines the payload type, so
+        // `validatedPayload` is an `OtpSend` without an asserted generic.
+        const validatedPayload = parseQueueMessage(QUEUES.OTP_SEND, msg.content);
         await processOtpSend(validatedPayload);
         ch.ack(msg);
       } catch (e) {
@@ -156,11 +157,9 @@ export async function startNotificationConsumer(): Promise<void> {
       const retries = typeof headers["x-retries"] === "number" ? headers["x-retries"] : 0;
 
       try {
-        // Validate notification message
-        const validatedPayload = parseIncomingMessage<Notification>(
-          QUEUES.NOTIFICATIONS,
-          msg.content,
-        );
+        // Validate notification message. The queue determines the payload type,
+        // so `validatedPayload` is a `Notification` without an asserted generic.
+        const validatedPayload = parseQueueMessage(QUEUES.NOTIFICATIONS, msg.content);
         await processNotification(validatedPayload);
         ch.ack(msg);
       } catch (e) {
