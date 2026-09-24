@@ -58,11 +58,9 @@ async function publishWithRetry(payload: AuditPayload): Promise<void> {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const channel = getRabbitMQChannel();
-      const sent = channel.sendToQueue(
-        QUEUES.AUDIT_LOGS,
-        Buffer.from(JSON.stringify(payload)),
-        { persistent: true },
-      );
+      const sent = channel.sendToQueue(QUEUES.AUDIT_LOGS, Buffer.from(JSON.stringify(payload)), {
+        persistent: true,
+      });
 
       if (!sent) {
         throw new Error("RabbitMQ sendToQueue returned false");
@@ -93,10 +91,7 @@ async function publishWithRetry(payload: AuditPayload): Promise<void> {
  * Save failed audit event to MongoDB outbox so it is never lost.
  * Falls back to local file if MongoDB is also unavailable.
  */
-async function saveToOutbox(
-  payload: AuditPayload,
-  failureReason: string,
-): Promise<void> {
+async function saveToOutbox(payload: AuditPayload, failureReason: string): Promise<void> {
   try {
     const db = getMongoDB();
     const doc: OutboxDocument = {
@@ -110,8 +105,7 @@ async function saveToOutbox(
       failureReason,
     });
   } catch (mongoErr) {
-    const mongoMessage =
-      mongoErr instanceof Error ? mongoErr.message : String(mongoErr);
+    const mongoMessage = mongoErr instanceof Error ? mongoErr.message : String(mongoErr);
     logger.error("CRITICAL: Audit outbox write failed — falling back to file", {
       eventType: payload.eventType,
       mongoError: mongoMessage,
@@ -121,10 +115,7 @@ async function saveToOutbox(
   }
 }
 
-function saveToFallbackFile(
-  payload: AuditPayload,
-  failureReason: string,
-): void {
+function saveToFallbackFile(payload: AuditPayload, failureReason: string): void {
   try {
     const logDir = path.dirname(config.logFile);
     if (!fs.existsSync(logDir)) {
@@ -175,10 +166,10 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
     await publishWithRetry(payload);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    logger.error(
-      `Audit publish failed after ${MAX_RETRIES} retries — saving to outbox`,
-      { eventType: entry.eventType, error: reason },
-    );
+    logger.error(`Audit publish failed after ${MAX_RETRIES} retries — saving to outbox`, {
+      eventType: entry.eventType,
+      error: reason,
+    });
     await saveToOutbox(payload, reason);
   }
 }

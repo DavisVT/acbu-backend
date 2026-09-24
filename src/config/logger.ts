@@ -4,9 +4,10 @@ import path from "path";
 import fs from "fs";
 import { config } from "./env";
 import { FinancialLogPayload, FinancialEventEnvironment } from "../types/logging";
-import { redactFormat, redactPii } from "./logRedaction";
-
+// Re-export redaction helpers so callers that previously imported from logger.ts
+// continue to work without changes. The implementations live in logRedaction.ts.
 export { redactFormat, redactLogValue, redactPii } from "./logRedaction";
+import { redactFormat, redactLogValue } from "./logRedaction";
 
 export type LogLevel = "error" | "warn" | "info" | "http" | "verbose" | "debug" | "silly";
 
@@ -37,66 +38,6 @@ const logDir = path.dirname(config.logFile);
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
-
-const CARD_NUMBER_PATTERN = /\b\d{13,19}\b/g;
-
-const SENSITIVE_KEY_PATTERN =
-  /pass(?:word|code|wd)|secret|token|authorization|api[_-]?key|private[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|secret[_-]?key|secret[_-]?access[_-]?key|\bpin\b|cvv|cvc|ssn|bvn|credit[_-]?card|card[_-]?number|cookie|mnemonic|\bseed\b|\bjwt\b/i;
-
-const REDACTED = "[REDACTED]";
-
-function redactPii(value: string): string {
-  return value.replace(CARD_NUMBER_PATTERN, REDACTED);
-}
-
-function isSensitiveKey(key: string): boolean {
-  return SENSITIVE_KEY_PATTERN.test(key);
-}
-
-/** Recursively redact sensitive keys and card-like numbers from log values. */
-export function redactLogValue(
-  value: unknown,
-  key?: string,
-  seen: WeakSet<object> = new WeakSet(),
-): unknown {
-  if (key !== undefined && isSensitiveKey(key)) {
-    return REDACTED;
-  }
-  if (typeof value === "string") {
-    return redactPii(value);
-  }
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-  if (seen.has(value)) {
-    return "[Circular]";
-  }
-  seen.add(value);
-
-  if (Array.isArray(value)) {
-    return value.map((item) => redactLogValue(item, undefined, seen));
-  }
-
-  const result: Record<string, unknown> = {};
-  for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
-    result[childKey] = redactLogValue(childValue, childKey, seen);
-  }
-  return result;
-}
-
-/** Winston format: apply PII/secret redaction to every log info object. */
-export const redactFormat = winston.format((info) => {
-  const seen = new WeakSet<object>();
-  for (const key of Object.keys(info)) {
-    if (key === "level") continue;
-    (info as Record<string, unknown>)[key] = redactLogValue(
-      (info as Record<string, unknown>)[key],
-      key,
-      seen,
-    );
-  }
-  return info;
-});
 
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
@@ -162,6 +103,27 @@ export const logger = winston.createLogger({
 
 // Structured Financial Logging
 
+// Audit dead-letter queue (DLQ) for financial events that fail validation.
+// Records are appended as newline-delimited JSON so they can be replayed,
+// alerted on, or reconciled later instead of vanishing from the audit trail.
+const FINANCIAL_EVENT_DLQ_FILENAME = "financial-events-dlq.log";
+
+export function getFinancialEventDlqFilePath(): string {
+  return path.join(logDir, FINANCIAL_EVENT_DLQ_FILENAME);
+}
+
+function writeFinancialEventDlq(record: Record<string, unknown>): void {
+  try {
+    fs.appendFileSync(getFinancialEventDlqFilePath(), `${JSON.stringify(record)}\n`, "utf8");
+  } catch (err) {
+    // Never let DLQ persistence failures propagate to callers; the error-level
+    // alert emitted alongside still surfaces the rejected event.
+    logger.error("Failed to persist invalid financial event to audit DLQ", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 const REQUIRED_FIELDS: (keyof FinancialLogPayload)[] = [
   "event",
   "amount",
@@ -174,7 +136,10 @@ const REQUIRED_FIELDS: (keyof FinancialLogPayload)[] = [
   "correlationId",
 ];
 
-export function logFinancialEvent(payload: Omit<FinancialLogPayload, "timestamp" | "environment"> & Partial<Pick<FinancialLogPayload, "timestamp" | "environment">>): void {
+export function logFinancialEvent(
+  payload: Omit<FinancialLogPayload, "timestamp" | "environment"> &
+    Partial<Pick<FinancialLogPayload, "timestamp" | "environment">>,
+): void {
   // Apply defaults (caller-supplied values take precedence)
   const entry: FinancialLogPayload = {
     ...payload,
@@ -182,12 +147,10 @@ export function logFinancialEvent(payload: Omit<FinancialLogPayload, "timestamp"
     environment: payload.environment ?? (config.nodeEnv as FinancialEventEnvironment),
   };
 
-  // Redact PII in string fields
+  // Redact PII in all fields using the full key-based + card-number redaction
   const mutableEntry = entry as unknown as Record<string, unknown>;
   for (const key of Object.keys(mutableEntry)) {
-    if (typeof mutableEntry[key] === "string") {
-      mutableEntry[key] = redactPii(mutableEntry[key] as string);
-    }
+    mutableEntry[key] = redactLogValue(mutableEntry[key], key);
   }
 
   // Validate required fields
@@ -195,7 +158,20 @@ export function logFinancialEvent(payload: Omit<FinancialLogPayload, "timestamp"
     (f) => entry[f] === undefined || entry[f] === null || entry[f] === "",
   );
   if (missing.length > 0) {
-    logger.warn("logFinancialEvent: missing required fields", { missing, partial: entry });
+    // Error-level alert: a malformed financial event must never disappear
+    // from the audit trail silently (#791).
+    logger.error("logFinancialEvent: missing required fields — event quarantined to audit DLQ", {
+      missing,
+      partial: entry,
+    });
+    // Preserve the redacted partial record in the audit DLQ for replay and
+    // reconciliation instead of dropping it.
+    writeFinancialEventDlq({
+      reason: "missing_required_fields",
+      missing,
+      dlqTimestamp: new Date().toISOString(),
+      event: entry,
+    });
     return;
   }
 

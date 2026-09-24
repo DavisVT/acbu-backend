@@ -123,11 +123,9 @@ export class ReserveTrackerService {
    */
   async verifyReserves(totalAcbuSupply: string): Promise<boolean> {
     try {
-      const result = await this.contractClient.readContract(
-        this.contractId,
-        "verify_reserves",
-        [ContractClient.toScVal(BigInt(totalAcbuSupply))],
-      );
+      const result = await this.contractClient.readContract(this.contractId, "verify_reserves", [
+        ContractClient.toScVal(BigInt(totalAcbuSupply)),
+      ]);
 
       return ContractClient.fromScVal(result) as boolean;
     } catch (error) {

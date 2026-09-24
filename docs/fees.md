@@ -156,8 +156,8 @@ Location: `src/services/feePolicy/__tests__/feePolicyService.pbt.test.ts`
 
 To run property-based tests:
 ```bash
-npm install --save-dev fast-check
-npm test -- feePolicyService.pbt.test.ts
+pnpm add -D fast-check
+pnpm test -- feePolicyService.pbt.test.ts
 ```
 
 ## Configuration

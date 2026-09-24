@@ -1,12 +1,11 @@
+import crypto from "crypto";
+import { Prisma } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import { prisma } from "../../config/database";
 import { AppError } from "../../middleware/errorHandler";
 import { logger, logFinancialEvent } from "../../config/logger";
 import { logAudit } from "../audit";
-import {
-  checkWithdrawalLimits,
-  isCurrencyWithdrawalPaused,
-} from "../limits/limitsService";
+import { checkWithdrawalLimits, isCurrencyWithdrawalPaused } from "../limits/limitsService";
 import { enqueueWebhook } from "../webhook";
 import { simulatedBillsPartner } from "./simulatedBillsPartner";
 import type {
@@ -28,14 +27,10 @@ const PROVIDERS: Record<string, BillsPartnerAdapter> = {
 };
 
 function getConfiguredBillsProviderId(): string {
-  return (process.env.BILLS_PROVIDER || DEFAULT_PROVIDER_ID)
-    .trim()
-    .toLowerCase();
+  return (process.env.BILLS_PROVIDER || DEFAULT_PROVIDER_ID).trim().toLowerCase();
 }
 
-function getBillsProvider(
-  providerId = getConfiguredBillsProviderId(),
-): BillsPartnerAdapter {
+function getBillsProvider(providerId = getConfiguredBillsProviderId()): BillsPartnerAdapter {
   const provider = PROVIDERS[providerId];
   if (!provider) {
     throw new AppError(`Bills provider '${providerId}' is not configured`, 503);
@@ -49,10 +44,7 @@ function asJsonRecord(value: unknown): JsonRecord {
     : {};
 }
 
-function getWebhookEventType(
-  provider: string,
-  status: BillsWebhookStatus,
-): string {
+function getWebhookEventType(provider: string, status: BillsWebhookStatus): string {
   return `bills:${provider}:${status}`;
 }
 
@@ -85,9 +77,7 @@ async function resolveCatalogSelection(
   return { provider, biller, product };
 }
 
-async function createBillsWebhookRecord(
-  event: BillsWebhookEvent,
-): Promise<void> {
+async function createBillsWebhookRecord(event: BillsWebhookEvent): Promise<void> {
   await prisma.webhook.create({
     data: {
       transactionId: event.transactionId,
@@ -100,7 +90,7 @@ async function createBillsWebhookRecord(
         currency: event.currency,
         reason: event.reason ?? null,
         raw_payload: event.rawPayload ?? null,
-      },
+      } as unknown as Prisma.InputJsonValue,
       status: "processed",
     },
   });
@@ -115,18 +105,13 @@ export async function getBillsCatalog() {
   };
 }
 
-export async function payBill(
-  request: BillPaymentRequest,
-): Promise<BillPaymentResult> {
+export async function payBill(request: BillPaymentRequest): Promise<BillPaymentResult> {
   const { provider, biller, product } = await resolveCatalogSelection(
     request.billerId,
     request.productId,
   );
 
-  if (
-    request.amount < product.minAmount ||
-    request.amount > product.maxAmount
-  ) {
+  if (request.amount < product.minAmount || request.amount > product.maxAmount) {
     throw new AppError(
       `Amount must be between ${product.minAmount} and ${product.maxAmount} ${product.currency}`,
       400,
@@ -155,7 +140,7 @@ export async function payBill(
   // paths in this repo. The new bill_payment type is included in limit queries.
   await checkWithdrawalLimits(
     audience,
-    request.amount,
+    new Decimal(request.amount),
     product.currency,
     request.userId ?? null,
     request.organizationId ?? null,
@@ -176,7 +161,7 @@ export async function payBill(
         product_name: product.name,
         customer_reference: request.customerReference,
         metadata: request.metadata ?? null,
-      },
+      } as unknown as Prisma.InputJsonValue,
       rateSnapshot: {
         provider: provider.providerId,
         organizationId: request.organizationId ?? null,
@@ -241,7 +226,7 @@ export async function payBill(
           dispatch_status: providerResult.dispatchStatus,
           dispatched_at: new Date().toISOString(),
           provider_response: providerResult.rawResponse ?? null,
-        },
+        } as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -261,13 +246,8 @@ export async function payBill(
 
     let status: BillPaymentResult["status"] = providerResult.dispatchStatus;
     if (providerResult.reconciliationEvent) {
-      const reconciled = await reconcileBillsWebhook(
-        providerResult.reconciliationEvent,
-      );
-      status =
-        reconciled.status === "completed"
-          ? "completed"
-          : providerResult.dispatchStatus;
+      const reconciled = await reconcileBillsWebhook(providerResult.reconciliationEvent);
+      status = reconciled.status === "completed" ? "completed" : providerResult.dispatchStatus;
     }
 
     return {
@@ -355,7 +335,7 @@ export async function reconcileBillsWebhook(event: BillsWebhookEvent): Promise<{
     webhook_reason: event.reason ?? null,
     webhook_received_at: new Date().toISOString(),
     webhook_payload: event.rawPayload ?? null,
-  };
+  } as unknown as Prisma.InputJsonValue;
 
   await prisma.transaction.update({
     where: { id: transaction.id },
@@ -423,8 +403,7 @@ export async function reconcileBillsWebhook(event: BillsWebhookEvent): Promise<{
     failed: "failed",
     refunded: "reversed",
   };
-  const reconcileFinancialStatus =
-    reconcileStatusMap[event.status] ?? "pending";
+  const reconcileFinancialStatus = reconcileStatusMap[event.status] ?? "pending";
 
   logFinancialEvent({
     event: "webhook.reconciled",
@@ -446,9 +425,7 @@ export async function reconcileBillsWebhook(event: BillsWebhookEvent): Promise<{
   };
 }
 
-export async function refundBillPayment(
-  request: BillsRefundRequest,
-): Promise<BillsRefundResult> {
+export async function refundBillPayment(request: BillsRefundRequest): Promise<BillsRefundResult> {
   const transaction = await prisma.transaction.findUnique({
     where: { id: request.transactionId },
     select: {
@@ -473,9 +450,7 @@ export async function refundBillPayment(
     throw new AppError("Only completed bill payments can be refunded", 409);
   }
 
-  const providerId = String(
-    asJsonRecord(transaction.rateSnapshot).provider || DEFAULT_PROVIDER_ID,
-  );
+  const providerId = String(asJsonRecord(transaction.rateSnapshot).provider || DEFAULT_PROVIDER_ID);
   const provider = getBillsProvider(providerId);
   const localAmount = transaction.localAmount?.toNumber() ?? 0;
   const currency = transaction.localCurrency ?? "NGN";

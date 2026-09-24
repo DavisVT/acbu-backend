@@ -38,8 +38,7 @@ export async function postSalaryDisburse(
     const body = postSalaryDisburseSchema.parse(req.body);
     const result = await salaryService.createSalaryBatch({
       userId,
-      organizationId:
-        body.organization_id || req.apiKey?.organizationId || undefined,
+      organizationId: body.organization_id || req.apiKey?.organizationId || undefined,
       totalAmount: body.total_amount,
       currency: body.currency,
       idempotencyKey: body.idempotency_key,
@@ -57,9 +56,7 @@ export async function postSalaryDisburse(
     });
   } catch (e) {
     if (e instanceof z.ZodError) {
-      return next(
-        new AppError("Validation error", 400, "VALIDATION_ERROR", e.flatten()),
-      );
+      return next(new AppError("Validation error", 400, "VALIDATION_ERROR", e.flatten()));
     }
     next(e);
   }
@@ -112,9 +109,7 @@ export const postSalaryScheduleSchema = z.object({
   name: z.string().min(1, "Name is required"),
   cron: z.string().min(1, "Cron expression is required"),
   currency: z.string().default("ACBU"),
-  amount_config: z
-    .array(salaryItemSchema)
-    .min(1, "At least one item is required"),
+  amount_config: z.array(salaryItemSchema).min(1, "At least one item is required"),
 });
 
 /**
@@ -135,8 +130,7 @@ export async function postSalarySchedule(
     const body = postSalaryScheduleSchema.parse(req.body);
     const schedule = await salaryService.createSalarySchedule({
       userId,
-      organizationId:
-        body.organization_id || req.apiKey?.organizationId || undefined,
+      organizationId: body.organization_id || req.apiKey?.organizationId || undefined,
       name: body.name,
       cron: body.cron,
       currency: body.currency,
@@ -150,9 +144,7 @@ export async function postSalarySchedule(
     });
   } catch (e) {
     if (e instanceof z.ZodError) {
-      return next(
-        new AppError("Validation error", 400, "VALIDATION_ERROR", e.flatten()),
-      );
+      return next(new AppError("Validation error", 400, "VALIDATION_ERROR", e.flatten()));
     }
     next(e);
   }

@@ -58,10 +58,9 @@ export function attachRetryInterceptor(instance: AxiosInstance): void {
     if (config._retryCount > MAX_RETRIES) return Promise.reject(error);
 
     const retryAfterHeader = error.response?.headers?.["retry-after"] as string | undefined;
-    const waitMs =
-      retryAfterHeader
-        ? parseRetryAfterMs(retryAfterHeader)
-        : backoffMs(config._retryCount);
+    const waitMs = retryAfterHeader
+      ? parseRetryAfterMs(retryAfterHeader)
+      : backoffMs(config._retryCount);
 
     logger.warn("HTTP retry scheduled", {
       url: config.url,
