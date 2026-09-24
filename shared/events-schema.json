@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "source": "backend Soroban/Horizon event listener declarations",
+  "events": [
+    {
+      "contract": "burning",
+      "listener": "src/jobs/acbu_burning_event_listener.ts",
+      "effect_types": ["contract_debited", "contract_effect"]
+    },
+    {
+      "contract": "escrow",
+      "listener": "src/jobs/acbu_escrow_event_listener.ts",
+      "effect_types": ["contract_credited", "contract_debited", "contract_effect"]
+    },
+    {
+      "contract": "lendingPool",
+      "listener": "src/jobs/acbu_lending_pool_event_listener.ts",
+      "effect_types": ["contract_credited", "contract_debited", "contract_effect"]
+    },
+    {
+      "contract": "minting",
+      "listener": "src/jobs/acbu_minting_event_listener.ts",
+      "effect_types": ["contract_credited", "contract_effect"]
+    },
+    {
+      "contract": "savingsVault",
+      "listener": "src/jobs/acbu_savings_vault_event_listener.ts",
+      "effect_types": ["contract_credited", "contract_debited", "contract_effect"]
+    }
+  ]
+}

@@ -37,6 +37,8 @@
     "backfill:kyc-encryption": "ts-node --transpile-only scripts/backfillKycEncryption.ts",
     "stellar:create-wallet": "ts-node --transpile-only scripts/create-stellar-wallet.ts",
     "compute:basket-weights": "ts-node --transpile-only scripts/compute-basket-weights.ts",
+    "event-schema:check": "node scripts/check-event-schema.js",
+    "test:event-schema": "node --test scripts/check-event-schema.test.js",
     "postinstall": "prisma generate"
   },
   "keywords": [
