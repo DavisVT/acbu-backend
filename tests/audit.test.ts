@@ -139,7 +139,7 @@ describe("logAudit", () => {
     // All 3 attempts fail
     mockGetChannel.mockReturnValue({ sendToQueue: makeSendToQueue(false) });
 
-    await logAudit(entry);
+    await expect(logAudit(entry)).rejects.toThrow("RabbitMQ sendToQueue returned false");
 
     // Event must not be lost — outbox must have received it
     expect(mockCollection).toHaveBeenCalledWith("audit_outbox");
@@ -162,7 +162,7 @@ describe("logAudit", () => {
       throw new Error("RabbitMQ down");
     });
 
-    await logAudit(entry);
+    await expect(logAudit(entry)).rejects.toThrow("RabbitMQ down");
 
     expect(mockInsertOne).toHaveBeenCalledTimes(1);
     expect(mockInsertOne).toHaveBeenCalledWith(
@@ -178,7 +178,7 @@ describe("logAudit", () => {
       throw new Error("MongoDB down");
     });
 
-    await logAudit(entry);
+    await expect(logAudit(entry)).rejects.toThrow("RabbitMQ sendToQueue returned false");
 
     expect(mockFs.appendFileSync).toHaveBeenCalledWith(
       expect.stringContaining("lost-audits.log"),
@@ -196,7 +196,7 @@ describe("logAudit", () => {
       throw new Error("MongoDB down");
     });
 
-    await logAudit(entry);
+    await expect(logAudit(entry)).rejects.toThrow("RabbitMQ sendToQueue returned false");
 
     expect(mockSendEmail).toHaveBeenCalledWith(
       "admin@example.com",
@@ -210,7 +210,7 @@ describe("logAudit", () => {
     mockGetMongoDB.mockImplementation(() => { throw new Error("down"); });
     mockFs.existsSync.mockReturnValueOnce(false);
 
-    await logAudit(entry);
+    await expect(logAudit(entry)).rejects.toThrow("RabbitMQ sendToQueue returned false");
 
     expect(mockFs.mkdirSync).toHaveBeenCalledWith(
       expect.any(String),
@@ -226,7 +226,7 @@ describe("logAudit", () => {
       throw new Error("disk full");
     });
 
-    await logAudit(entry);
+    await expect(logAudit(entry)).rejects.toThrow("RabbitMQ sendToQueue returned false");
 
     expect(mockLogger.error).toHaveBeenCalledWith(
       expect.stringContaining("FATAL"),
@@ -242,7 +242,7 @@ describe("logAudit", () => {
     mockGetChannel.mockReturnValue({ sendToQueue: makeSendToQueue(false) });
     mockGetMongoDB.mockImplementation(() => { throw new Error("down"); });
 
-    await logAudit(entry);
+    await expect(logAudit(entry)).rejects.toThrow("RabbitMQ sendToQueue returned false");
 
     expect(mockSendEmail).not.toHaveBeenCalled();
     config.notification.alertEmail = original;
@@ -254,6 +254,6 @@ describe("logAudit", () => {
     mockSendEmail.mockRejectedValueOnce(new Error("SMTP error"));
 
     // Must not throw even if email fails
-    await expect(logAudit(entry)).resolves.toBeUndefined();
+    await expect(logAudit(entry)).rejects.toThrow("RabbitMQ sendToQueue returned false");
   });
 });
