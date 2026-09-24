@@ -435,6 +435,57 @@ export async function depositFromBasketCurrency(
       throw createError;
     }
 
+    try {
+      const acbuAmountInfo = await convertLocalToUsdWithPrecision(
+        amountDecimal.toString(),
+        currency,
+      );
+      const sourceAccount = stellarClient.getKeypair()?.publicKey();
+      if (!sourceAccount) {
+        throw new Error("No source account available");
+      }
+
+      const mintResult = await acbuMintingService.mintFromBasket({
+        txId: tx.id,
+        user: sourceAccount,
+        recipient: wallet_address,
+        acbuAmount: decimalToContractNumber(acbuAmountInfo.acbuEquivalent).toString(),
+      });
+      const acbuNum = contractNumberToDecimal(Number(mintResult.acbuAmount));
+
+      await prisma.transaction.update({
+        where: { id: tx.id },
+        data: {
+          status: "completed",
+          acbuAmount: new Decimal(acbuNum),
+          blockchainTxHash: mintResult.transactionHash,
+          completedAt: new Date(),
+          rateSnapshot: {
+            deposit_currency: currency,
+            amount: amountDecimal.toNumber(),
+            acbu_amount: acbuNum.toNumber(),
+            transaction_hash: mintResult.transactionHash,
+            timestamp: new Date().toISOString(),
+          },
+        },
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      await prisma.transaction.update({
+        where: { id: tx.id },
+        data: {
+          status: "failed",
+          rateSnapshot: {
+            deposit_currency: currency,
+            amount: amountDecimal.toNumber(),
+            error: message,
+            at: new Date().toISOString(),
+          },
+        },
+      });
+      throw err;
+    }
+
     await logAudit({
       eventType: "transaction",
       entityType: "transaction",
@@ -454,9 +505,9 @@ export async function depositFromBasketCurrency(
       currency,
       amount: amountDecimal.toString(),
       wallet_address: wallet_address ? "***" : undefined,
-      status: "pending",
+      status: "completed",
       message:
-        "Deposit received. Complete payment to the designated account for your currency; ACBU will be minted after confirmation.",
+        "Deposit received and ACBU has been minted to the wallet.",
     });
   } catch (error) {
     next(error);
