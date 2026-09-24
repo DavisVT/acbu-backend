@@ -294,8 +294,22 @@ describe("Minting listener – rejects fake tx hashes", () => {
     });
     await invokeHandler("contract_credited", event);
     expect(mockEnqueueUsdcConversion).toHaveBeenCalledWith(
-      expect.objectContaining({ txHash: realHash }),
+      expect.objectContaining({ txHash: realHash, transactionId: "tx-id-123" }),
     );
+  });
+
+  it("ignores verified events that cannot be correlated to a transaction (no orphan reserve history, #982)", async () => {
+    const realHash = "f".repeat(64);
+    (stellarClient.getTransaction as jest.Mock).mockResolvedValue({ id: realHash });
+    // No pending/processing mint transaction matches the hash.
+    mockPrismaFindFirst.mockResolvedValue(null);
+    const event = makeEvent("contract_credited", {
+      amount: "100",
+      account: "G" + "A".repeat(55),
+      transaction_hash: realHash,
+    });
+    await invokeHandler("contract_credited", event);
+    expect(mockEnqueueUsdcConversion).not.toHaveBeenCalled();
   });
 });
 

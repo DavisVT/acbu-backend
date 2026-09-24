@@ -1,5 +1,11 @@
 /**
  * Listens for MintEvent (contract_credited) on acbu_minting contract and enqueues USDC_CONVERSION jobs.
+ *
+ * Correlation guarantee (Pi-Defi-world/acbu-backend#982): a mint effect is
+ * only forwarded to the conversion queue when its on-chain transaction hash
+ * can be verified and correlated to a known mint Transaction. Reserve
+ * history rows created downstream always link back to that transaction —
+ * orphan entries for uncorrelatable effects are never created.
  */
 import { eventListener, ContractEvent } from "../services/stellar/eventListener";
 import { getContractAddresses } from "../config/contracts";

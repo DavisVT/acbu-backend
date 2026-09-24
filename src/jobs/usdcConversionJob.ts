@@ -1,6 +1,13 @@
 /**
  * Consumes USDC_CONVERSION queue: when MintEvent is received, process USDC → basket allocation.
  * Updates transaction and reserve history; basket weight distribution uses BasketService.
+ *
+ * Idempotency (Pi-Defi-world/acbu-backend#981): the job processes each
+ * conversion exactly once per source transaction. The payload may be
+ * redelivered (at-least-once queue semantics) or the same mint effect may be
+ * observed twice, so processing is gated by an atomic claim on the matched
+ * transaction (pending → processing). Reserve history rows are always linked
+ * to the claimed transaction so reserve accounting stays reconcilable.
  */
 import type { ConsumeMessage } from "amqplib";
 import { connectRabbitMQ, QUEUES, assertQueueWithDLQ } from "../config/rabbitmq";
@@ -21,6 +28,32 @@ export interface UsdcConversionPayload {
   transactionId?: string;
 }
 
+/**
+ * Atomically claim a pending transaction for conversion.
+ * Returns true when this consumer owns the claim; false when the
+ * transaction was already claimed or completed by another delivery.
+ */
+async function claimTransaction(transactionId: string): Promise<boolean> {
+  const claim = await prisma.transaction.updateMany({
+    where: { id: transactionId, status: "pending" },
+    data: { status: "processing" },
+  });
+  return claim.count === 1;
+}
+
+/**
+ * Release a claim so a redelivered message can be retried from "pending".
+ * The claim is a temporary state and is deliberately not modelled by the
+ * transaction state machine (processing → pending is not a normal
+ * lifecycle transition).
+ */
+async function releaseClaim(transactionId: string): Promise<void> {
+  await prisma.transaction.updateMany({
+    where: { id: transactionId, status: "processing" },
+    data: { status: "pending" },
+  });
+}
+
 export async function startUsdcConversionConsumer(): Promise<void> {
   const ch = await connectRabbitMQ();
   await assertQueueWithDLQ(QUEUE);
@@ -31,11 +64,23 @@ export async function startUsdcConversionConsumer(): Promise<void> {
       if (!msg) return;
       const headers = msg.properties.headers ?? {};
       const retries = typeof headers["x-retries"] === "number" ? headers["x-retries"] : 0;
+      let claimedTransactionId: string | null = null;
       try {
         const body = JSON.parse(msg.content.toString()) as UsdcConversionPayload;
         await processUsdcConversion(body);
         ch.ack(msg);
       } catch (e) {
+        // Release the claim so a redelivered copy of this message can be
+        // processed again from the pending state.
+        if (claimedTransactionId) {
+          await releaseClaim(claimedTransactionId).catch((releaseError) => {
+            logger.error("USDC conversion: failed to release transaction claim", {
+              transactionId: claimedTransactionId,
+              error: e,
+            });
+          });
+          claimedTransactionId = null;
+        }
         logger.error("USDC conversion job failed", { error: e });
         if (retries >= MAX_RETRIES) {
           logger.error("USDC conversion job failed permanently, sending to DLQ", { retries });
