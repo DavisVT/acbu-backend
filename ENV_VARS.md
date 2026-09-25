@@ -60,7 +60,8 @@ This file documents the environment variables required by the ACBU backend and t
 - `JWT_EXPIRES_IN` - defaults to `7d`
 - `JWT_CLOCK_TOLERANCE_SECONDS` - defaults to `30`
 - `API_KEY_SALT` - defaults to empty string
-- `ADMIN_API_KEY`
+- `ADMIN_API_KEY` - Single admin key (legacy support)
+- `ADMIN_API_KEYS` - Comma-separated list of admin keys or `adminId:key` pairs for multi-admin authentication and attribution
 - `LOG_LEVEL` - defaults to `info`
 - `LOG_FILE` - defaults to `logs/app.log`
 
@@ -70,6 +71,8 @@ This file documents the environment variables required by the ACBU backend and t
 - `RATE_LIMIT_MAX_REQUESTS` - defaults to `100`
 - `AUTH_RATE_LIMIT_WINDOW_MS` - defaults to `900000`
 - `AUTH_RATE_LIMIT_MAX_REQUESTS` - defaults to `10`
+- `ADMIN_RATE_LIMIT_WINDOW_MS` - defaults to `60000`
+- `ADMIN_RATE_LIMIT_MAX_REQUESTS` - defaults to `30`
 - `RATE_LIMIT_FALLBACK_MAX_REQUESTS` - defaults to `20`
 - `RATE_LIMIT_CIRCUIT_BREAKER_THRESHOLD` - defaults to `5`
 - `RATE_LIMIT_CIRCUIT_BREAKER_COOLDOWN_MS` - defaults to `60000`
@@ -154,6 +157,12 @@ This file documents the environment variables required by the ACBU backend and t
 - `AWS_SES_REGION`
 - `NOTIFICATION_SMS_PROVIDER` - defaults to `log`
 - `NOTIFICATION_ALERT_EMAIL`
+  - Optional. Comma-separated list of email addresses that receive reserve-alert
+    emails and the weekly weight-drift audit report
+    (`src/jobs/weightDriftAuditJob.ts`, read as `config.notification.alertEmail`).
+  - Example: `ops@example.com` or `ops@example.com,admin@example.com`
+  - When absent or empty, the audit job still runs and persists the audit
+    record — it simply skips sending the email notification.
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_FROM_NUMBER`
@@ -170,6 +179,10 @@ This file documents the environment variables required by the ACBU backend and t
 - `OPENAI_API_KEY`
 - `OPENAI_ORG_MONTHLY_BUDGET_USD` - defaults to `50`
 - `OPENAI_MAX_TOKENS_PER_REQUEST` - defaults to `2000`
+- `OPENAI_FAIL_OPEN_ENABLED` - defaults to `false` (fail-closed for security/KYC compliance; set to `true` to fail open during service degradation)
+- `OPENAI_FAIL_OPEN_TIMEOUT_MS` - defaults to `2000` (timeout per request attempt in ms)
+- `OPENAI_FAIL_OPEN_MAX_RETRIES` - defaults to `2` (retry attempts on transient errors)
+- `OPENAI_FAIL_OPEN_RETRY_BASE_MS` - defaults to `500` (exponential backoff base in ms)
 
 ### CORS
 

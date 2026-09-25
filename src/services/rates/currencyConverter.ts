@@ -62,15 +62,13 @@ const rateField = {
  *
  * @param localAmount - The amount in local currency (as number)
  * @param currency - The currency code (e.g., "NGN", "KES")
- * @returns The equivalent USD amount as a Decimal to preserve full precision.
- *          Callers that need a JS number for comparison with integer thresholds
- *          should call `.toNumber()` at the boundary — not inside this function.
+ * @returns The equivalent USD amount as a number with proper decimal precision
  * @throws AppError if currency not supported, rates not available, or conversion fails
  */
 export async function convertLocalToUsd(
-  localAmount: number,
+  localAmount: number | string | Decimal,
   currency: string,
-): Promise<Decimal> {
+): Promise<number> {
   // Validate currency is supported
   if (!CURRENCY_TO_RATE_FIELD[currency]) {
     throw new AppError(
@@ -83,19 +81,16 @@ export async function convertLocalToUsd(
   const latestRate = await getLatestAcbuRate().catch(() => null);
 
   if (!latestRate) {
-    throw new AppError(
-      "Exchange rates not yet available. Please try again in a moment.",
-      503,
-    );
+    throw new AppError("Exchange rates not yet available. Please try again in a moment.", 503);
   }
 
   // Get the rate field name for this currency
   const rateFieldName = CURRENCY_TO_RATE_FIELD[currency];
 
   // Retrieve the local-to-ACBU rate (how many units of local currency per 1 ACBU)
-  const localToAcbuRate = latestRate[rateFieldName as keyof typeof latestRate];
+  const localToAcbuRate = latestRate[rateFieldName];
 
-  if (!localToAcbuRate || new Decimal(localToAcbuRate).isNegative() || new Decimal(localToAcbuRate).isZero()) {
+  if (!localToAcbuRate || localToAcbuRate.toNumber() <= 0) {
     throw new AppError(
       `Exchange rate for ${currency} is not available or invalid. Cannot process deposit at this time.`,
       503,
@@ -103,8 +98,8 @@ export async function convertLocalToUsd(
   }
 
   // Convert using high-precision Decimal arithmetic
-  const localAmountDecimal = new Decimal(localAmount);
-  const rateDecimal = new Decimal(localToAcbuRate);
+  const localAmountDecimal = new Decimal(localAmount as any);
+  const rateDecimal = new Decimal(localToAcbuRate as any);
 
   // Calculate ACBU equivalent
   const acbuAmount = localAmountDecimal.div(rateDecimal);
@@ -112,22 +107,15 @@ export async function convertLocalToUsd(
   // Get USD rate per ACBU
   const acbuUsdRate = new Decimal(latestRate.acbuUsd);
 
-  if (acbuUsdRate.isNegative() || acbuUsdRate.isZero()) {
-    throw new AppError(
-      "USD conversion rate is invalid. Cannot process deposit at this time.",
-      503,
-    );
+  if (acbuUsdRate.toNumber() <= 0) {
+    throw new AppError("USD conversion rate is invalid. Cannot process deposit at this time.", 503);
   }
 
   // Convert ACBU to USD
-  // Issue #787: Return the full-precision Decimal rather than calling .toNumber().
-  // JavaScript's 64-bit float cannot represent all fractional values exactly, so
-  // converting to number here would silently lose precision for large or highly
-  // fractional USD amounts (e.g., deposit limits and fee calculations).
-  // Callers that need a JS number should call .toNumber() at the boundary.
   const usdAmount = acbuAmount.mul(acbuUsdRate);
 
-  return usdAmount;
+  // Return as number with precision
+  return usdAmount.toNumber();
 }
 
 /**
@@ -136,12 +124,18 @@ export async function convertLocalToUsd(
  *
  * @param localAmount - The amount in local currency (as Decimal string or number)
  * @param currency - The currency code (e.g., "NGN", "KES")
- * @returns Object with both number and Decimal representations
+ * @returns Object with both Decimal (primary) and number representations
  */
 export async function convertLocalToUsdWithPrecision(
   localAmount: string | number,
   currency: string,
 ): Promise<{
+  /** Primary high-precision USD amount — use this for audit logs and accounting. */
+  usdAmountDecimal: Decimal;
+  /**
+   * @deprecated Use `usdAmountDecimal` for accounting. This number field is kept for
+   * backwards compatibility but may lose precision on very large or high-decimal amounts.
+   */
   usdAmount: number;
   originalAmount: Decimal;
   acbuEquivalent: Decimal;
@@ -158,19 +152,16 @@ export async function convertLocalToUsdWithPrecision(
   const latestRate = await getLatestAcbuRate().catch(() => null);
 
   if (!latestRate) {
-    throw new AppError(
-      "Exchange rates not yet available. Please try again in a moment.",
-      503,
-    );
+    throw new AppError("Exchange rates not yet available. Please try again in a moment.", 503);
   }
 
   // Get the rate field name for this currency
   const rateFieldName = CURRENCY_TO_RATE_FIELD[currency];
 
   // Retrieve the local-to-ACBU rate
-  const localToAcbuRate = latestRate[rateFieldName as keyof typeof latestRate];
+  const localToAcbuRate = latestRate[rateFieldName];
 
-  if (!localToAcbuRate || new Decimal(localToAcbuRate).isNegative() || new Decimal(localToAcbuRate).isZero()) {
+  if (!localToAcbuRate || localToAcbuRate.toNumber() <= 0) {
     throw new AppError(
       `Exchange rate for ${currency} is not available or invalid. Cannot process deposit at this time.`,
       503,
@@ -178,8 +169,8 @@ export async function convertLocalToUsdWithPrecision(
   }
 
   // Convert using high-precision Decimal arithmetic
-  const localAmountDecimal = new Decimal(localAmount);
-  const rateDecimal = new Decimal(localToAcbuRate);
+  const localAmountDecimal = new Decimal(localAmount as any);
+  const rateDecimal = new Decimal(localToAcbuRate as any);
 
   // Calculate ACBU equivalent
   const acbuAmount = localAmountDecimal.div(rateDecimal);
@@ -187,17 +178,15 @@ export async function convertLocalToUsdWithPrecision(
   // Get USD rate per ACBU
   const acbuUsdRate = new Decimal(latestRate.acbuUsd);
 
-  if (acbuUsdRate.isNegative() || acbuUsdRate.isZero()) {
-    throw new AppError(
-      "USD conversion rate is invalid. Cannot process deposit at this time.",
-      503,
-    );
+  if (acbuUsdRate.toNumber() <= 0) {
+    throw new AppError("USD conversion rate is invalid. Cannot process deposit at this time.", 503);
   }
 
   // Convert ACBU to USD
   const usdAmount = acbuAmount.mul(acbuUsdRate);
 
   return {
+    usdAmountDecimal: usdAmount,
     usdAmount: usdAmount.toNumber(),
     originalAmount: localAmountDecimal,
     acbuEquivalent: acbuAmount,

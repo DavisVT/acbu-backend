@@ -5,15 +5,15 @@
  * OTP (sms/email) is created and published to RabbitMQ OTP_SEND for delivery.
  */
 import bcrypt from "bcrypt";
-import axios from "axios";
 import { totp } from "otplib";
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import { config } from "../../config/env";
 import { prisma } from "../../config/database";
 import { generateApiKey } from "../../middleware/auth";
 import { signChallengeToken, verifyChallengeToken, revokeJti } from "../../utils/jwt";
 import { logger } from "../../config/logger";
 import { getRabbitMQChannel } from "../../config/rabbitmq";
+import { generateId } from "../../utils/idGenerator";
 import { QUEUES } from "../../config/rabbitmq";
 import { ensureWalletForUser } from "../wallet/walletService";
 import { logAudit } from "../audit";
@@ -187,7 +187,7 @@ async function verifyMfaChallengeForUser(
   challengeToken: string,
   code: string,
 ): Promise<"totp" | "sms" | "email"> {
-  const payload = verifyChallengeToken(challengeToken);
+  const payload = await verifyChallengeToken(challengeToken);
   if (payload.userId !== userId) {
     throw new InvalidOrExpiredChallengeError();
   }
@@ -268,6 +268,8 @@ export async function resolveUserByIdentifier(identifier: string) {
       twoFaMethod: true,
       failedSigninAttempts: true,
       lockoutUntil: true,
+      actorType: true,
+      organizationId: true,
     },
   });
 
@@ -276,6 +278,10 @@ export async function resolveUserByIdentifier(identifier: string) {
       id: "dummy-id",
       passcodeHash: DUMMY_HASH,
       twoFaMethod: null,
+      failedSigninAttempts: 0,
+      lockoutUntil: null,
+      actorType: "retail",
+      organizationId: null,
       isDummy: true,
     };
   }
@@ -326,28 +332,6 @@ export async function signup(params: SignupParams): Promise<SignupResult> {
   };
 }
 
-/** Verify a Cloudflare Turnstile token server-side. Fails closed when the secret is unset or the call errors. */
-export async function verifyCaptcha(token: string, ip?: string): Promise<boolean> {
-  const secret = config.auth.captchaSecret;
-  if (!secret) {
-    logger.error("Captcha verification failed: CAPTCHA_SECRET not configured");
-    return false;
-  }
-  try {
-    const body = new URLSearchParams({ secret, response: token });
-    if (ip) body.set("remoteip", ip);
-    const { data } = await axios.post<{ success?: boolean }>(
-      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-      body,
-      { timeout: 5000 },
-    );
-    return data?.success === true;
-  } catch (err) {
-    logger.warn("Captcha verification request failed", { err });
-    return false;
-  }
-}
-
 /**
  * Signin: verify identifier + passcode. If 2FA on, return challenge_token (and send OTP via RabbitMQ when sms/email); else issue api_key.
  */
@@ -363,9 +347,7 @@ export async function signin(params: SigninParams): Promise<SigninResult> {
     throw new CaptchaRequiredError();
   }
 
-  if (captchaToken && !(await verifyCaptcha(captchaToken, ip))) {
-    throw new CaptchaRequiredError();
-  }
+  // TODO: Verify captchaToken here if provided
 
   const user = await resolveUserByIdentifier(identifier);
 
@@ -509,7 +491,7 @@ export async function signin(params: SigninParams): Promise<SigninResult> {
  */
 export async function verify2fa(params: Verify2faParams): Promise<Verify2faResult> {
   const { challenge_token, code, ip } = params;
-  const payload = verifyChallengeToken(challenge_token);
+  const payload = await verifyChallengeToken(challenge_token);
 
   // Check brute force for 2FA
   const status = await authBruteGuard.getStatus(payload.userId, ip);
@@ -525,6 +507,8 @@ export async function verify2fa(params: Verify2faParams): Promise<Verify2faResul
       totpSecretEncrypted: true,
       lockoutUntil: true,
       failedSigninAttempts: true,
+      actorType: true,
+      organizationId: true,
     },
   });
   if (!user || !user.twoFaMethod) throw new InvalidCredentialsError();
@@ -915,7 +899,7 @@ function generateSecureRefreshToken(): string {
 }
 
 async function hashRefreshToken(token: string): Promise<string> {
-  return bcrypt.hash(token, 12);
+  return createHash("sha256").update(token).digest("hex");
 }
 
 /**
@@ -928,7 +912,7 @@ export async function issueRefreshToken(
   const { userId } = params;
   const token = generateSecureRefreshToken();
   const tokenHash = await hashRefreshToken(token);
-  const tokenFamilyId = randomUUID();
+  const tokenFamilyId = generateId();
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
   await prisma.refreshToken.create({
@@ -1014,7 +998,7 @@ export async function refreshAccessToken(
   // Issue a new refresh token in a NEW family
   const newToken = generateSecureRefreshToken();
   const newTokenHash = await hashRefreshToken(newToken);
-  const newTokenFamilyId = randomUUID();
+  const newTokenFamilyId = generateId();
   const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
   await prisma.refreshToken.create({

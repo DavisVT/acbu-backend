@@ -1,3 +1,4 @@
+import { Decimal } from "@prisma/client/runtime/library";
 import { depositFromBasketCurrency, mintFromUsdc } from "./mintController";
 import { prisma } from "../config/database";
 import { AppError } from "../middleware/errorHandler";
@@ -15,6 +16,8 @@ jest.mock("../config/database", () => ({
     transaction: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
     },
     onRampSwap: {
       create: jest.fn(),
@@ -55,6 +58,12 @@ jest.mock("../services/rates", () => {
   };
 });
 
+jest.mock("../services/stellar/client", () => ({
+  stellarClient: {
+    getKeypair: jest.fn(() => ({ publicKey: jest.fn(() => "GBANKSOURCEACCOUNT1234567890") })),
+  },
+}));
+
 const makeRes = () => {
   const res = { status: jest.fn(), json: jest.fn() } as unknown as Response;
   (res.status as jest.Mock).mockReturnValue(res);
@@ -74,14 +83,24 @@ const mockedOnRampSwapCreate = prisma.onRampSwap.create as jest.Mock;
 const mockedOnRampSwapFindFirst = prisma.onRampSwap.findFirst as jest.Mock;
 const mockedTransactionCreate = prisma.transaction.create as jest.Mock;
 const mockedTransactionFindFirst = prisma.transaction.findFirst as jest.Mock;
+const mockedTransactionFindUnique = prisma.transaction.findUnique as jest.Mock;
+const mockedTransactionUpdate = prisma.transaction.update as jest.Mock;
+const mockedConvertLocalToUsdWithPrecision = jest.requireMock("../services/rates").convertLocalToUsdWithPrecision as jest.Mock;
 
 describe("mintController", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedAssertUserWalletAddress.mockImplementation(async (_userId, walletAddress) => walletAddress);
+    mockedAssertUserWalletAddress.mockImplementation(
+      async (_userId, walletAddress) => walletAddress,
+    );
     mockedCheckDepositLimits.mockResolvedValue(undefined);
     mockedIsMintingPaused.mockResolvedValue(false);
     mockedEnqueueUsdcConvertAndMint.mockResolvedValue(undefined);
+    mockedConvertLocalToUsdWithPrecision.mockResolvedValue({
+      usdAmount: 100,
+      originalAmount: new Decimal("100"),
+      acbuEquivalent: new Decimal("10"),
+    });
   });
 
   it("rejects /mint/deposit when API key has no user context", async () => {
@@ -109,12 +128,20 @@ describe("mintController", () => {
     mockedAssertUserWalletAddress.mockImplementation(async () => {
       throw new AppError("Wallet address does not match user", 403);
     });
-    mockedUserFindUnique.mockResolvedValue({ stellarAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF" });
+    mockedUserFindUnique.mockResolvedValue({
+      stellarAddress: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    });
     const res = makeRes();
     const next = makeNext();
     await depositFromBasketCurrency(
       {
-        apiKey: { id: "key-1", userId: "user-1", organizationId: null, permissions: [], rateLimit: 100 },
+        apiKey: {
+          id: "key-1",
+          userId: "user-1",
+          organizationId: null,
+          permissions: [],
+          rateLimit: 100,
+        },
         body: {
           currency: "NGN",
           amount: "100",
@@ -137,7 +164,13 @@ describe("mintController", () => {
     const next = makeNext();
     await depositFromBasketCurrency(
       {
-        apiKey: { id: "key-1", userId: "user-1", organizationId: null, permissions: [], rateLimit: 100 },
+        apiKey: {
+          id: "key-1",
+          userId: "user-1",
+          organizationId: null,
+          permissions: [],
+          rateLimit: 100,
+        },
         body: {
           currency: "JPY",
           amount: "100",
@@ -154,6 +187,45 @@ describe("mintController", () => {
     expect(err.message).toContain("currency must be one of");
   });
 
+  it("mints ACBU from the basket deposit and records the on-chain hash", async () => {
+    mockedTransactionCreate.mockResolvedValue({ id: "tx-1" });
+    mockedTransactionUpdate.mockResolvedValue({ id: "tx-1" });
+    const mintFromBasket = jest.requireMock("../services/contracts").acbuMintingService.mintFromBasket;
+    mintFromBasket.mockResolvedValue({ transactionHash: "abc123", acbuAmount: "10" });
+
+    const res = makeRes();
+    const next = makeNext();
+    await depositFromBasketCurrency(
+      {
+        apiKey: { id: "key-1", userId: "user-1", organizationId: null, permissions: [], rateLimit: 100 },
+        body: {
+          currency: "NGN",
+          amount: "100",
+          wallet_address: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        },
+      } as unknown as AuthRequest,
+      res,
+      next,
+    );
+
+    expect(mintFromBasket).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: "GBANKSOURCEACCOUNT1234567890",
+        recipient: "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+      }),
+    );
+    expect(mockedTransactionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "tx-1" },
+        data: expect.objectContaining({
+          status: "completed",
+          blockchainTxHash: "abc123",
+        }),
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it("returns the existing mint transaction on duplicate idempotency key", async () => {
     mockedTransactionFindFirst.mockResolvedValue({
       id: "tx-duplicate",
@@ -166,7 +238,13 @@ describe("mintController", () => {
     const next = makeNext();
     await depositFromBasketCurrency(
       {
-        apiKey: { id: "key-1", userId: "user-1", organizationId: null, permissions: [], rateLimit: 100 },
+        apiKey: {
+          id: "key-1",
+          userId: "user-1",
+          organizationId: null,
+          permissions: [],
+          rateLimit: 100,
+        },
         get: jest.fn().mockReturnValue("repeat-key"),
         body: {
           currency: "NGN",
@@ -199,7 +277,13 @@ describe("mintController", () => {
     const next = makeNext();
     await mintFromUsdc(
       {
-        apiKey: { id: "key-1", userId: "user-1", organizationId: null, permissions: [], rateLimit: 100 },
+        apiKey: {
+          id: "key-1",
+          userId: "user-1",
+          organizationId: null,
+          permissions: [],
+          rateLimit: 100,
+        },
         get: jest.fn().mockReturnValue("duplicate-usdc"),
         body: {
           usdc_amount: "10",

@@ -1,3 +1,4 @@
+import { Decimal } from "@prisma/client/runtime/library";
 import {
   checkDepositLimits,
   checkWithdrawalLimits,
@@ -53,26 +54,26 @@ describe("limitsService", () => {
     it("resolves without error when amount is within daily and monthly caps", async () => {
       (prisma.transaction.aggregate as jest.Mock)
         .mockResolvedValueOnce({
-          _sum: { usdcAmount: { toNumber: () => 100 } },
+          _sum: { usdcAmount: new Decimal(100) },
         }) // daily
         .mockResolvedValueOnce({
-          _sum: { usdcAmount: { toNumber: () => 500 } },
+          _sum: { usdcAmount: new Decimal(500) },
         }); // monthly
       await expect(
-        checkDepositLimits("retail", 100, "u1", null),
+        checkDepositLimits("retail", new Decimal(100), "u1", null),
       ).resolves.toBeUndefined();
     });
 
     it("throws AppError 429 when daily deposit limit is exceeded", async () => {
       (prisma.transaction.aggregate as jest.Mock)
         .mockResolvedValueOnce({
-          _sum: { usdcAmount: { toNumber: () => 4950 } },
+          _sum: { usdcAmount: new Decimal(4950) },
         })
         .mockResolvedValueOnce({
-          _sum: { usdcAmount: { toNumber: () => 1000 } },
+          _sum: { usdcAmount: new Decimal(1000) },
         });
       await expect(
-        checkDepositLimits("retail", 100, "u1", null),
+        checkDepositLimits("retail", new Decimal(100), "u1", null),
       ).rejects.toMatchObject({
         statusCode: 429,
         message: expect.stringContaining("daily limit"),
@@ -81,12 +82,12 @@ describe("limitsService", () => {
 
     it("throws AppError 429 when monthly deposit limit is exceeded", async () => {
       (prisma.transaction.aggregate as jest.Mock)
-        .mockResolvedValueOnce({ _sum: { usdcAmount: { toNumber: () => 0 } } })
+        .mockResolvedValueOnce({ _sum: { usdcAmount: new Decimal(0) } })
         .mockResolvedValueOnce({
-          _sum: { usdcAmount: { toNumber: () => 49950 } },
+          _sum: { usdcAmount: new Decimal(49950) },
         });
       await expect(
-        checkDepositLimits("retail", 100, "u1", null),
+        checkDepositLimits("retail", new Decimal(100), "u1", null),
       ).rejects.toMatchObject({
         statusCode: 429,
         message: expect.stringContaining("monthly limit"),
@@ -98,7 +99,7 @@ describe("limitsService", () => {
         .mockResolvedValueOnce({ _sum: { usdcAmount: null } })
         .mockResolvedValueOnce({ _sum: { usdcAmount: null } });
       await expect(
-        checkDepositLimits("retail", 50, "u1", null),
+        checkDepositLimits("retail", new Decimal(50), "u1", null),
       ).resolves.toBeUndefined();
     });
 
@@ -106,7 +107,7 @@ describe("limitsService", () => {
       (prisma.transaction.aggregate as jest.Mock)
         .mockResolvedValueOnce({ _sum: { usdcAmount: null } })
         .mockResolvedValueOnce({ _sum: { usdcAmount: null } });
-      await checkDepositLimits("business", 1000, null, "org-1");
+      await checkDepositLimits("business", new Decimal(1000), null, "org-1");
       const call = (prisma.transaction.aggregate as jest.Mock).mock.calls[0][0];
       expect(call.where).toHaveProperty("OR");
     });
@@ -118,26 +119,26 @@ describe("limitsService", () => {
     it("resolves without error when amount is within limits", async () => {
       (prisma.transaction.aggregate as jest.Mock)
         .mockResolvedValueOnce({
-          _sum: { acbuAmountBurned: { toNumber: () => 0 } },
+          _sum: { acbuAmountBurned: new Decimal(0) },
         })
         .mockResolvedValueOnce({
-          _sum: { acbuAmountBurned: { toNumber: () => 0 } },
+          _sum: { acbuAmountBurned: new Decimal(0) },
         });
       await expect(
-        checkWithdrawalLimits("retail", 100, "NGN", "u1", null),
+        checkWithdrawalLimits("retail", new Decimal(100), "NGN", "u1", null),
       ).resolves.toBeUndefined();
     });
 
     it("throws AppError 429 when daily withdrawal limit is exceeded", async () => {
       (prisma.transaction.aggregate as jest.Mock)
         .mockResolvedValueOnce({
-          _sum: { acbuAmountBurned: { toNumber: () => 9950 } },
+          _sum: { acbuAmountBurned: new Decimal(9950) },
         })
         .mockResolvedValueOnce({
-          _sum: { acbuAmountBurned: { toNumber: () => 0 } },
+          _sum: { acbuAmountBurned: new Decimal(0) },
         });
       await expect(
-        checkWithdrawalLimits("retail", 100, "NGN", "u1", null),
+        checkWithdrawalLimits("retail", new Decimal(100), "NGN", "u1", null),
       ).rejects.toMatchObject({
         statusCode: 429,
         message: expect.stringContaining("daily limit"),
@@ -147,13 +148,13 @@ describe("limitsService", () => {
     it("throws AppError 429 when monthly withdrawal limit is exceeded", async () => {
       (prisma.transaction.aggregate as jest.Mock)
         .mockResolvedValueOnce({
-          _sum: { acbuAmountBurned: { toNumber: () => 0 } },
+          _sum: { acbuAmountBurned: new Decimal(0) },
         })
         .mockResolvedValueOnce({
-          _sum: { acbuAmountBurned: { toNumber: () => 79950 } },
+          _sum: { acbuAmountBurned: new Decimal(79950) },
         });
       await expect(
-        checkWithdrawalLimits("retail", 100, "NGN", "u1", null),
+        checkWithdrawalLimits("retail", new Decimal(100), "NGN", "u1", null),
       ).rejects.toMatchObject({
         statusCode: 429,
         message: expect.stringContaining("monthly limit"),
@@ -165,7 +166,7 @@ describe("limitsService", () => {
         .mockResolvedValueOnce({ _sum: { acbuAmountBurned: null } })
         .mockResolvedValueOnce({ _sum: { acbuAmountBurned: null } });
       await expect(
-        checkWithdrawalLimits("retail", 50, "NGN", "u1", null),
+        checkWithdrawalLimits("retail", new Decimal(50), "NGN", "u1", null),
       ).resolves.toBeUndefined();
     });
 
@@ -173,7 +174,7 @@ describe("limitsService", () => {
       (prisma.transaction.aggregate as jest.Mock).mockResolvedValue({
         _sum: { acbuAmountBurned: null },
       });
-      await checkWithdrawalLimits("retail", 10, "KES", "u1", null);
+      await checkWithdrawalLimits("retail", new Decimal(10), "KES", "u1", null);
       const call = (prisma.transaction.aggregate as jest.Mock).mock.calls[0][0];
       expect(call.where).toMatchObject({ localCurrency: "KES" });
     });
@@ -215,23 +216,17 @@ describe("limitsService", () => {
 
   describe("isMintingPaused", () => {
     it("returns true when reserve ratio is below minimum (1.01 < 1.02)", async () => {
-      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(
-        1.01,
-      );
+      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(1.01);
       expect(await isMintingPaused()).toBe(true);
     });
 
     it("returns false when reserve ratio is exactly at minimum (1.02)", async () => {
-      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(
-        1.02,
-      );
+      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(1.02);
       expect(await isMintingPaused()).toBe(false);
     });
 
     it("returns false when reserve ratio is comfortably above minimum (1.05)", async () => {
-      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(
-        1.05,
-      );
+      (reserveTracker.calculateReserveRatio as jest.Mock).mockResolvedValue(1.05);
       expect(await isMintingPaused()).toBe(false);
     });
   });

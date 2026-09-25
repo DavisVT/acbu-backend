@@ -4,12 +4,15 @@
  * Uses fintech router for FX rates; instructions can be consumed by REBALANCING queue for execution.
  */
 import { prisma } from "../../config/database";
+import { config } from "../../config/env";
 import { logger } from "../../config/logger";
 import { getFintechRouter } from "../fintech";
 import { reserveTracker } from "./ReserveTracker";
 import type { ReserveHealth, ReserveStatus } from "./ReserveTracker";
 
-const DRIFT_THRESHOLD_PCT = 1; // rebalance when |actual - target| > 1%
+// #627: Read from config so the threshold can be tuned via RESERVE_DRIFT_THRESHOLD_PCT
+// without a code change or redeploy of the full service.
+const DRIFT_THRESHOLD_PCT = config.reserve.driftThresholdPct;
 
 export interface RebalanceInstruction {
   fromCurrency: string;
@@ -47,14 +50,9 @@ export class RebalancingEngine {
     totalReserveUsd: number,
   ): Promise<RebalanceInstruction[]> {
     const instructions: RebalanceInstruction[] = [];
-    const overweight = driftSnapshot.filter(
-      (c) => c.weightDrift > DRIFT_THRESHOLD_PCT,
-    );
-    const underweight = driftSnapshot.filter(
-      (c) => c.weightDrift < -DRIFT_THRESHOLD_PCT,
-    );
-    if (overweight.length === 0 || underweight.length === 0)
-      return instructions;
+    const overweight = driftSnapshot.filter((c) => c.weightDrift > DRIFT_THRESHOLD_PCT);
+    const underweight = driftSnapshot.filter((c) => c.weightDrift < -DRIFT_THRESHOLD_PCT);
+    if (overweight.length === 0 || underweight.length === 0) return instructions;
 
     const router = getFintechRouter();
     for (const over of overweight) {
@@ -63,25 +61,16 @@ export class RebalancingEngine {
       if (excessUsd <= 0) continue;
       try {
         const providerFrom = await router.getProvider(over.currency);
-        const rateFrom = await providerFrom.convertCurrency(
-          1,
-          over.currency,
-          "USD",
-        );
+        const rateFrom = await providerFrom.convertCurrency(1, over.currency, "USD");
         const rateFromUsd = rateFrom.rate;
         for (const under of underweight) {
           const deficitPct = -under.weightDrift;
           const shareOfExcess =
-            (deficitPct / underweight.reduce((s, u) => s + -u.weightDrift, 0)) *
-            excessUsd;
+            (deficitPct / underweight.reduce((s, u) => s + -u.weightDrift, 0)) * excessUsd;
           if (shareOfExcess <= 0) continue;
           try {
             const providerTo = await router.getProvider(under.currency);
-            const rateTo = await providerTo.convertCurrency(
-              1,
-              under.currency,
-              "USD",
-            );
+            const rateTo = await providerTo.convertCurrency(1, under.currency, "USD");
             const rateToUsd = rateTo.rate;
             const amountFrom = shareOfExcess / rateFromUsd;
             const amountTo = shareOfExcess / rateToUsd;
@@ -124,10 +113,7 @@ export class RebalancingEngine {
     const driftSnapshot = health.currencies;
     const totalReserveUsd = health.totalReserveValueUsd;
 
-    const instructions = await this.generateInstructions(
-      driftSnapshot,
-      totalReserveUsd,
-    );
+    const instructions = await this.generateInstructions(driftSnapshot, totalReserveUsd);
 
     const event = await prisma.rebalancingEvent.create({
       data: {

@@ -17,14 +17,13 @@ import {
   approveWeightDriftAudit,
   rejectWeightDriftAudit,
 } from "../controllers/weightDriftAuditController";
-import { validateAdminKey } from "../middleware/auth";
+import { requireAdminApiKey } from "../middleware/adminAuth";
 import { adminRateLimiter } from "../middleware/rateLimiter";
 
 const router: IRouter = Router();
 
-// All routes require admin key authentication
-router.use(validateAdminKey);
 router.use(adminRateLimiter);
+router.use(requireAdminApiKey);
 
 // List audits with optional filtering
 router.get("/", listWeightDriftAudits);

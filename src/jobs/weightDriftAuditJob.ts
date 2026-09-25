@@ -21,10 +21,8 @@ import { config } from "../config/env";
 
 const DEFAULT_INTERVAL_DAYS = 7; // Run weekly
 const INTERVAL_MS =
-  (parseInt(
-    process.env.WEIGHT_DRIFT_AUDIT_INTERVAL_DAYS || String(DEFAULT_INTERVAL_DAYS),
-    10,
-  ) || DEFAULT_INTERVAL_DAYS) *
+  (parseInt(process.env.WEIGHT_DRIFT_AUDIT_INTERVAL_DAYS || String(DEFAULT_INTERVAL_DAYS), 10) ||
+    DEFAULT_INTERVAL_DAYS) *
   24 *
   60 *
   60 *
@@ -68,6 +66,22 @@ async function longSleep(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, delay));
     remaining -= delay;
   }
+}
+
+/**
+ * Normalise the configured admin distribution list into individual recipients.
+ *
+ * The destination is `config.notification.alertEmail`, which is backed by the
+ * comma-separated `NOTIFICATION_ALERT_EMAIL` env var. Splitting on commas
+ * without trimming would happily send to " ops@example.com" (note the leading
+ * space) and count stray delimiters as recipients, so normalise once here.
+ */
+export function parseAlertRecipients(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((address) => address.trim())
+    .filter((address) => address.length > 0);
 }
 
 /**
@@ -135,18 +149,22 @@ Created At: ${new Date().toISOString()}
 `;
 
     // 4. Send notification to admins (configurable via env)
-    if (config.ADMIN_NOTIFICATION_EMAIL) {
+    // AB-045 (#995): the destination is config.notification.alertEmail, backed by
+    // NOTIFICATION_ALERT_EMAIL in src/config/env.ts. The previously documented
+    // ADMIN_NOTIFICATION_EMAIL key never existed on the config object, so the
+    // audit report was silently never delivered.
+    const adminNotificationEmails = parseAlertRecipients(config.notification.alertEmail);
+    if (adminNotificationEmails.length > 0) {
       try {
-        await sendEmail({
-          to: config.ADMIN_NOTIFICATION_EMAIL,
-          subject: `[ACBU] Weekly Weight Drift Audit - ${audit.currenciesExceedingThreshold > 0 ? "ACTION REQUIRED" : "OK"}`,
-          body: emailBody,
-          html: `<pre>${emailBody}</pre>`,
-        });
+        await sendEmail(
+          adminNotificationEmails.join(","),
+          `[ACBU] Weekly Weight Drift Audit - ${audit.currenciesExceedingThreshold > 0 ? "ACTION REQUIRED" : "OK"}`,
+          emailBody,
+        );
 
         logger.info("Weight drift audit email sent", {
           auditId: audit.auditId,
-          recipientCount: config.ADMIN_NOTIFICATION_EMAIL.split(",").length,
+          recipientCount: adminNotificationEmails.length,
         });
       } catch (e) {
         logger.warn("Failed to send weight drift audit email", {
@@ -154,6 +172,12 @@ Created At: ${new Date().toISOString()}
           error: e,
         });
       }
+    } else {
+      // Surface the skipped notification instead of silently doing nothing, so a
+      // missing NOTIFICATION_ALERT_EMAIL is visible to operators in the logs.
+      logger.warn("Weight drift audit email skipped: NOTIFICATION_ALERT_EMAIL is not configured", {
+        auditId: audit.auditId,
+      });
     }
 
     const duration = Date.now() - startTime;
@@ -185,9 +209,7 @@ export async function startWeightDriftAuditScheduler(): Promise<void> {
         // Run audit immediately on first boot if configured
         if (process.env.WEIGHT_DRIFT_AUDIT_RUN_ON_STARTUP === "true") {
           await runWeightDriftAuditOnce();
-          logger.info(
-            "Startup weight drift audit completed, scheduling next run",
-          );
+          logger.info("Startup weight drift audit completed, scheduling next run");
         }
 
         // Calculate next run (Monday 00:00 UTC by default)
