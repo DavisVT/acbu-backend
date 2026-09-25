@@ -9,6 +9,7 @@ import { acbuReserveTrackerService } from "../contracts";
 import { basketService } from "../basket";
 import { getRabbitMQChannel } from "../../config/rabbitmq";
 import { QUEUES } from "../../config/rabbitmq";
+import { getAcbuAssetConfig } from "../../config/acbuAsset";
 import { Decimal } from "@prisma/client/runtime/library";
 import { stellarClient } from "../stellar/client";
 import { contractClient, ContractClient } from "../stellar/contractClient";
@@ -394,8 +395,8 @@ export class ReserveTracker {
   private async getTotalAcbuSupply(): Promise<number> {
     const ledgerSupply = await this.getTotalAcbuSupplyFromLedger();
 
-    const issuer = process.env.STELLAR_ACBU_ASSET_ISSUER;
-    const assetCode = process.env.STELLAR_ACBU_ASSET_CODE || "ACBU";
+    // Single source of truth for the ACBU code + issuer (see config/acbuAsset.ts).
+    const { code, issuer } = getAcbuAssetConfig();
 
     if (!issuer) {
       logger.warn("ACBU issuer not configured. Using ledger supply.");
@@ -404,7 +405,7 @@ export class ReserveTracker {
 
     try {
       const server = stellarClient.getServer();
-      const assets = await server.assets().forCode(assetCode).forIssuer(issuer).call();
+      const assets = await server.assets().forCode(code).forIssuer(issuer).call();
 
       if (assets.records.length === 0) {
         return ledgerSupply;

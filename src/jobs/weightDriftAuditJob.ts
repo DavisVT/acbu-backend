@@ -69,6 +69,22 @@ async function longSleep(ms: number): Promise<void> {
 }
 
 /**
+ * Normalise the configured admin distribution list into individual recipients.
+ *
+ * The destination is `config.notification.alertEmail`, which is backed by the
+ * comma-separated `NOTIFICATION_ALERT_EMAIL` env var. Splitting on commas
+ * without trimming would happily send to " ops@example.com" (note the leading
+ * space) and count stray delimiters as recipients, so normalise once here.
+ */
+export function parseAlertRecipients(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((address) => address.trim())
+    .filter((address) => address.length > 0);
+}
+
+/**
  * Execute weight drift audit job once
  */
 export async function runWeightDriftAuditOnce(): Promise<void> {
@@ -133,18 +149,22 @@ Created At: ${new Date().toISOString()}
 `;
 
     // 4. Send notification to admins (configurable via env)
-    const adminNotificationEmail = config.notification.alertEmail;
-    if (adminNotificationEmail) {
+    // AB-045 (#995): the destination is config.notification.alertEmail, backed by
+    // NOTIFICATION_ALERT_EMAIL in src/config/env.ts. The previously documented
+    // ADMIN_NOTIFICATION_EMAIL key never existed on the config object, so the
+    // audit report was silently never delivered.
+    const adminNotificationEmails = parseAlertRecipients(config.notification.alertEmail);
+    if (adminNotificationEmails.length > 0) {
       try {
         await sendEmail(
-          adminNotificationEmail,
+          adminNotificationEmails.join(","),
           `[ACBU] Weekly Weight Drift Audit - ${audit.currenciesExceedingThreshold > 0 ? "ACTION REQUIRED" : "OK"}`,
           emailBody,
         );
 
         logger.info("Weight drift audit email sent", {
           auditId: audit.auditId,
-          recipientCount: adminNotificationEmail.split(",").length,
+          recipientCount: adminNotificationEmails.length,
         });
       } catch (e) {
         logger.warn("Failed to send weight drift audit email", {
@@ -152,6 +172,12 @@ Created At: ${new Date().toISOString()}
           error: e,
         });
       }
+    } else {
+      // Surface the skipped notification instead of silently doing nothing, so a
+      // missing NOTIFICATION_ALERT_EMAIL is visible to operators in the logs.
+      logger.warn("Weight drift audit email skipped: NOTIFICATION_ALERT_EMAIL is not configured", {
+        auditId: audit.auditId,
+      });
     }
 
     const duration = Date.now() - startTime;

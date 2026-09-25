@@ -187,7 +187,7 @@ async function verifyMfaChallengeForUser(
   challengeToken: string,
   code: string,
 ): Promise<"totp" | "sms" | "email"> {
-  const payload = verifyChallengeToken(challengeToken);
+  const payload = await verifyChallengeToken(challengeToken);
   if (payload.userId !== userId) {
     throw new InvalidOrExpiredChallengeError();
   }
@@ -481,7 +481,7 @@ export async function signin(params: SigninParams): Promise<SigninResult> {
  */
 export async function verify2fa(params: Verify2faParams): Promise<Verify2faResult> {
   const { challenge_token, code, ip } = params;
-  const payload = verifyChallengeToken(challenge_token);
+  const payload = await verifyChallengeToken(challenge_token);
 
   // Check brute force for 2FA
   const status = await authBruteGuard.getStatus(payload.userId, ip);

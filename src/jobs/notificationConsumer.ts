@@ -100,7 +100,13 @@ export async function processNotification(payload: Notification): Promise<void> 
     }
     return;
   }
-  logger.debug("Notification type not handled", { type });
+
+  // Exhaustiveness check: every member of the Notification union is handled
+  // above, so `type` narrows to `never` here. Assigning it to a `never` binding
+  // turns "a new notification type was added to NotificationSchema but not to
+  // this consumer" into a compile-time error instead of a silent drop.
+  const unhandledType: never = type;
+  logger.debug("Notification type not handled", { type: unhandledType });
 }
 
 export async function startNotificationConsumer(): Promise<void> {
@@ -116,11 +122,10 @@ export async function startNotificationConsumer(): Promise<void> {
       const retries = typeof headers["x-retries"] === "number" ? headers["x-retries"] : 0;
 
       try {
-        // Validate OTP send message. The queue determines the payload type, so
-        // `validatedPayload` is an `OtpSend` without an asserted generic.
-        const validatedPayload = parseQueueMessage(QUEUES.OTP_SEND, msg.content);
-        await processOtpSend(validatedPayload);
-        ch.ack(msg);
+        // Validate OTP send message
+      const validatedPayload = parseIncomingMessage(QUEUES.OTP_SEND, msg.content);
+      await processOtpSend(validatedPayload);
+      ch.ack(msg);
       } catch (e) {
         if (e instanceof MessageValidationError) {
           logger.error("OTP_SEND validation failed, sending to DLQ", {
@@ -157,9 +162,9 @@ export async function startNotificationConsumer(): Promise<void> {
       const retries = typeof headers["x-retries"] === "number" ? headers["x-retries"] : 0;
 
       try {
-        // Validate notification message. The queue determines the payload type,
-        // so `validatedPayload` is a `Notification` without an asserted generic.
-        const validatedPayload = parseQueueMessage(QUEUES.NOTIFICATIONS, msg.content);
+        // Validate notification message; the payload type is inferred from the
+        // queue constant (Notification) rather than asserted by the caller.
+        const validatedPayload = parseIncomingMessage(QUEUES.NOTIFICATIONS, msg.content);
         await processNotification(validatedPayload);
         ch.ack(msg);
       } catch (e) {

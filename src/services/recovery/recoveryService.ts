@@ -40,9 +40,9 @@ function getRecoveryOtpAttemptKey(challengeToken: string): string {
     .digest("hex")}`;
 }
 
-function revokeRecoveryChallengeToken(payload: ChallengePayload): void {
+async function revokeRecoveryChallengeToken(payload: ChallengePayload): Promise<void> {
   if (payload.jti && typeof revokeJti === "function") {
-    revokeJti(payload.jti, payload.exp ?? Math.floor(Date.now() / 1000) + 300);
+    await revokeJti(payload.jti, payload.exp ?? Math.floor(Date.now() / 1000) + 300);
   }
 }
 
@@ -71,7 +71,7 @@ async function recordRecoveryOtpAttempt(
       userId: payload.userId,
       hasIp: Boolean(deviceFingerprint?.ip),
     });
-    revokeRecoveryChallengeToken(payload);
+    await revokeRecoveryChallengeToken(payload);
     throw new Error(RECOVERY_OTP_UNAVAILABLE_ERROR);
   }
 }
@@ -90,7 +90,7 @@ async function markRecoveryChallengeUsed(
     logger.error("Recovery: failed to update OTP challenge state", {
       userId: payload.userId,
     });
-    revokeRecoveryChallengeToken(payload);
+    await revokeRecoveryChallengeToken(payload);
     throw new Error(RECOVERY_OTP_UNAVAILABLE_ERROR);
   }
 }
@@ -332,7 +332,7 @@ export async function verifyRecoveryOtp(
   let payload: ChallengePayload;
 
   try {
-    payload = verifyChallengeToken(challenge_token, { consumeJti: false });
+    payload = await verifyChallengeToken(challenge_token, { consumeJti: false });
     if (
       !payload ||
       typeof payload.userId !== "string" ||
@@ -361,12 +361,12 @@ export async function verifyRecoveryOtp(
     logger.error("Recovery: OTP challenge lookup unavailable", {
       userId: payload.userId,
     });
-    revokeRecoveryChallengeToken(payload);
+    await revokeRecoveryChallengeToken(payload);
     throw new Error(RECOVERY_OTP_UNAVAILABLE_ERROR);
   }
 
   if (!challenge) {
-    revokeRecoveryChallengeToken(payload);
+    await revokeRecoveryChallengeToken(payload);
     await auditRecoveryEvent({
       eventType: "recovery_failed",
       userId: payload.userId,
@@ -394,7 +394,7 @@ export async function verifyRecoveryOtp(
       userId: payload.userId,
       hasIp: Boolean(deviceFingerprint?.ip),
     });
-    revokeRecoveryChallengeToken(payload);
+    await revokeRecoveryChallengeToken(payload);
     throw new Error(RECOVERY_OTP_UNAVAILABLE_ERROR);
   }
 
@@ -403,7 +403,7 @@ export async function verifyRecoveryOtp(
 
   if (!rateLimitResult.allowed) {
     await markRecoveryChallengeUsed(payload, challenge.id, now);
-    revokeRecoveryChallengeToken(payload);
+    await revokeRecoveryChallengeToken(payload);
     await auditRecoveryOtpFailure(
       payload,
       deviceFingerprint,
@@ -431,7 +431,7 @@ export async function verifyRecoveryOtp(
 
     if (challengeLocked) {
       await markRecoveryChallengeUsed(payload, challenge.id, now);
-      revokeRecoveryChallengeToken(payload);
+      await revokeRecoveryChallengeToken(payload);
     }
 
     await auditRecoveryOtpFailure(
@@ -467,7 +467,7 @@ export async function verifyRecoveryOtp(
     );
     if (challengeLocked) {
       await markRecoveryChallengeUsed(payload, challenge.id, now);
-      revokeRecoveryChallengeToken(payload);
+      await revokeRecoveryChallengeToken(payload);
     }
     logger.error("Recovery: OTP verification dependency unavailable", {
       userId: payload.userId,
@@ -489,7 +489,7 @@ export async function verifyRecoveryOtp(
     deviceFingerprint,
   );
   await markRecoveryChallengeUsed(payload, challenge.id, now);
-  revokeRecoveryChallengeToken(payload);
+  await revokeRecoveryChallengeToken(payload);
 
   await rotateUserSessions(payload.userId);
 
