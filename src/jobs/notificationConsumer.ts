@@ -17,7 +17,7 @@ import {
   renderInvestmentWithdrawalReadyTemplate,
 } from "../services/notification";
 import {
-  parseIncomingMessage,
+  parseQueueMessage,
   deadLetterMessage,
   MessageValidationError,
 } from "../utils/rabbitmq-validation";
@@ -25,7 +25,7 @@ import type { OtpSend, Notification } from "../types/rabbitmq-schemas";
 
 type UserNotificationContact = Pick<User, "email" | "phoneE164">;
 
-async function processOtpSend(payload: OtpSend): Promise<void> {
+export async function processOtpSend(payload: OtpSend): Promise<void> {
   const { channel, to, code } = payload;
   const body = renderOtpTemplate(code);
   if (channel === "email") {
@@ -37,7 +37,7 @@ async function processOtpSend(payload: OtpSend): Promise<void> {
   }
 }
 
-async function processNotification(payload: Notification): Promise<void> {
+export async function processNotification(payload: Notification): Promise<void> {
   const { type } = payload;
   if (type === "reserve_alert") {
     const { health, overcollateralizationRatio } = payload;
